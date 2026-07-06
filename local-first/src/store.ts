@@ -54,6 +54,23 @@ export interface BamStore {
   base: DocHandle<BamDoc>;
 }
 
+async function findWithRetry<T>(
+  repo: Repo,
+  url: string,
+  { attempts = 8, delayMs = 1500 } = {}
+): Promise<DocHandle<T>> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await repo.find<T>(url as never);
+    } catch (err) {
+      lastErr = err;
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw lastErr;
+}
+
 export async function openStore(opts: OpenStoreOptions): Promise<BamStore> {
   await initSubduction();
   const peerId = opts.signer.peerId().toString();
@@ -77,11 +94,13 @@ export async function openStore(opts: OpenStoreOptions): Promise<BamStore> {
   const now = nowIso();
 
   if (opts.rosterUrl) {
-    roster = await repo.find<RosterDoc>(opts.rosterUrl as never);
+    // Joining races the websocket connection: find() can report a document
+    // unavailable before the relay link is even up, so retry with backoff.
+    roster = await findWithRetry<RosterDoc>(repo, opts.rosterUrl);
     box.roster = roster;
     const baseUrl = roster.doc()?.baseDocUrl;
     if (!baseUrl) throw new Error("roster has no baseDocUrl (org not fully initialized)");
-    base = await repo.find<BamDoc>(baseUrl as never);
+    base = await findWithRetry<BamDoc>(repo, baseUrl);
   } else {
     const org = opts.createOrg ?? "BAM";
     roster = repo.create<RosterDoc>(emptyRosterDoc(org, now));

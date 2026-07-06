@@ -16,12 +16,13 @@
   },
   "dependencies": {
     "@automerge/automerge-repo": "2.6.0-subduction.40",
-    "@automerge/automerge-subduction": "0.16.0",
+    "@automerge/automerge-repo-network-messagechannel": "2.6.0-subduction.40",
     "@automerge/automerge-repo-storage-indexeddb": "2.6.0-subduction.40",
     "@automerge/automerge-repo-storage-nodefs": "2.6.0-subduction.40",
-    "@automerge/automerge-repo-network-messagechannel": "2.6.0-subduction.40"
+    "@automerge/automerge-subduction": "0.16.0"
   },
   "devDependencies": {
+    "@types/node": "^22.20.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
     "vite-plugin-wasm": "^3.4.1",
