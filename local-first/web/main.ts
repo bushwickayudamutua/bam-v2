@@ -15,6 +15,23 @@ import { makeWebApi } from "../src/webapi.ts";
 import { registerRosterView } from "../src/roster-view.ts";
 import { LANGUAGES } from "../src/domain/catalog.ts";
 
+// Console assets inlined at build time (?raw) so the app is one bundle.
+import consoleStyles from "./console/styles.css?raw";
+import consoleApp from "./console/app.js?raw";
+import viewCheckin from "./console/views/checkin.js?raw";
+import viewDashboard from "./console/views/dashboard.js?raw";
+import viewIntake from "./console/views/intake.js?raw";
+import viewOutreach from "./console/views/outreach.js?raw";
+import viewDistros from "./console/views/distros.js?raw";
+import viewAdmin from "./console/views/admin.js?raw";
+
+// Apply the console stylesheet (index.html no longer links it).
+{
+  const style = document.createElement("style");
+  style.textContent = consoleStyles;
+  document.head.append(style);
+}
+
 interface AppConfig {
   mode: "create" | "join";
   orgName?: string;
@@ -104,14 +121,25 @@ function firstRunScreen(root: HTMLElement, peerId: string): Promise<AppConfig> {
   });
 }
 
-function injectScript(src: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = src;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error(`failed to load ${src}`));
-    document.body.append(script);
-  });
+// The operator console is copied verbatim from bam/web/ as classic IIFE
+// scripts. We inline their SOURCE at build time (?raw) and run them as
+// inline <script> elements after BAM.api is set — so the whole app is a
+// single self-contained bundle (no runtime /console/*.js fetches), which
+// is what lets StatiCrypt encrypt it as one file.
+const CONSOLE_SCRIPTS: string[] = [
+  consoleApp,
+  viewCheckin,
+  viewDashboard,
+  viewIntake,
+  viewOutreach,
+  viewDistros,
+  viewAdmin,
+];
+
+function runInlineScript(code: string): void {
+  const script = document.createElement("script");
+  script.textContent = code;
+  document.body.append(script);
 }
 
 async function boot(): Promise<void> {
@@ -155,10 +183,7 @@ async function boot(): Promise<void> {
   w.BAM.api = makeWebApi(store);
   w.BAM.LANGUAGES = [...LANGUAGES];
 
-  await injectScript("/console/app.js");
-  for (const view of ["checkin", "dashboard", "intake", "outreach", "distros", "admin"]) {
-    await injectScript(`/console/views/${view}.js`);
-  }
+  for (const code of CONSOLE_SCRIPTS) runInlineScript(code);
   registerRosterView(store);
 
   root.remove();

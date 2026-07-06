@@ -14,4 +14,16 @@ export default defineConfig({
     // breaks its asset URL resolution.
     exclude: ["@automerge/automerge-subduction", "@automerge/automerge"],
   },
+  resolve: {
+    // Force the `import` condition so @automerge/automerge-subduction
+    // resolves to its internally-consistent `web.js` (web glue + inlined
+    // wasm) rather than the `browser` entry `bundler.js`, whose glue
+    // mismatch throws "expected instance of Topic" on ephemeral subscribe.
+    conditions: ["import", "module", "development", "default"],
+    dedupe: [
+      "@automerge/automerge",
+      "@automerge/automerge-subduction",
+      "@automerge/automerge-repo",
+    ],
+  },
 });

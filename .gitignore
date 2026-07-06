@@ -18,3 +18,6 @@ node_modules/
 local-first/dist/
 local-first/.bam-lf/
 *.identity.key
+local-first/dist-single/
+local-first/vite.singlefile.config.ts.timestamp*
+local-first/.staticrypt.json

@@ -138,3 +138,30 @@ persists locally in IndexedDB and works fully offline.
 - A hostile *modified* client on the roster can ignore local policy; that
   class of enforcement is exactly what Keyhive's convergent capabilities
   are for, once end-to-end delegation ships.
+
+## Deploying a password-gated demo (single-file + StatiCrypt)
+
+The app can be built as one self-contained `index.html` (JS + WASM inlined)
+and encrypted with [StatiCrypt](https://github.com/robinmoisson/staticrypt)
+so it can be hosted anywhere (e.g. GitHub Pages) behind a password:
+
+```sh
+npm run build:single                         # → dist-single/index.html (one file)
+npx staticrypt dist-single/index.html -p <password> --short -d out
+# deploy out/index.html (+ an empty .nojekyll) to any static host
+```
+
+Opened in a browser, it asks for the password, then the console runs. **Create
+a new org** to test the full single-device experience offline (no server). To
+test multi-device sync, **Join** with a roster URL + a `wss://` Subduction
+relay endpoint + the relay's peer id (see the relay section above).
+
+**Browser requirement:** device identity uses **Ed25519 WebCrypto**, which
+needs a recent browser — Chrome/Edge ≳ 137, Safari 17+ (iOS 17+), Firefox.
+Older browsers can't create the device key and the app won't boot.
+
+The single-file build forces the `import` resolve condition
+(`vite.config.ts`) so `@automerge/automerge-subduction` uses its
+internally-consistent `web.js` glue; the default `browser` entry
+(`bundler.js`) mixes glue instances and throws "expected instance of Topic"
+on ephemeral subscribe.
