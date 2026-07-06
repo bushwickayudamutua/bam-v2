@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BAM Mutual Aid System V2 — Documentation</title>
+<style>
+  :root{
+    --bg:#faf4ec; --surface:#fffdf9; --ink:#2b2320; --muted:#7a6f66;
+    --brand:#b4531f; --brand-ink:#fff; --brand-soft:#f3ddcb; --brand-deep:#8f3d13;
+    --ok:#2f7d4f; --warn:#9a6b0b; --danger:#a23b2d; --border:#e6d8c8;
+    --code-bg:#2b2320; --code-ink:#f3e9dd; --code-cap:#caa98f;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--bg)}
+  #deck{height:100vh;width:100vw;overflow:hidden;position:relative}
+  .slide{position:absolute;inset:0;display:none;flex-direction:column;justify-content:center;padding:6vh 8vw;overflow:auto}
+  .slide.active{display:flex}
+  .slide h1{font-size:clamp(28px,5vw,52px);margin:0 0 .35em;line-height:1.06}
+  .slide h2{font-size:clamp(22px,3.4vw,36px);margin:0 0 .45em;color:var(--brand);line-height:1.1}
+  .slide .subhead{font-size:clamp(15px,1.9vw,21px);color:var(--muted);margin:-.15em 0 1em;max-width:64ch}
+  .slide ul{font-size:clamp(15px,1.85vw,22px);line-height:1.5;margin:.2em 0;padding-left:1.15em;max-width:66ch}
+  .slide ul ul{font-size:.9em;margin:.15em 0}
+  .slide li{margin:.32em 0}
+  code{font-family:"SF Mono",SFMono-Regular,Menlo,Consolas,monospace}
+  .slide li code,.slide p code,.slide td code,.subhead code{background:var(--brand-soft);color:#7a2f10;padding:.03em .35em;border-radius:6px;font-size:.88em}
+  pre{background:var(--code-bg);color:var(--code-ink);padding:1em 1.2em;border-radius:var(--radius);overflow:auto;font-size:clamp(12px,1.35vw,16px);line-height:1.5;max-width:100%;margin:.5em 0}
+  pre .cap{display:block;color:var(--code-cap);font-size:.82em;margin-bottom:.6em;font-family:inherit}
+  pre code{color:inherit;background:none;padding:0}
+  table{border-collapse:collapse;font-size:clamp(13px,1.55vw,18px);margin:.5em 0;max-width:100%}
+  th,td{border:1px solid var(--border);padding:.4em .7em;text-align:left;vertical-align:top;background:var(--surface)}
+  th{background:var(--brand-soft);color:#5c2a12}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:2em;align-items:start}
+  @media (max-width:820px){.cols{grid-template-columns:1fr}}
+  .note{margin-top:1.1em;font-size:clamp(13px,1.5vw,16px);color:var(--muted);border-left:3px solid var(--brand);padding-left:.8em;max-width:66ch}
+  .note b{color:var(--danger)}
+  .badge{display:inline-block;background:var(--brand-soft);color:#7a2f10;border-radius:999px;padding:.18em .8em;font-size:clamp(12px,1.4vw,15px);margin:.2em .35em .2em 0}
+  .divider{background:linear-gradient(135deg,var(--brand),var(--brand-deep));color:#fff;justify-content:center}
+  .divider h1{color:#fff;position:relative;z-index:1}
+  .divider .subhead{color:#f3ddcb}
+  .divider .kicker{font-size:clamp(70px,15vw,180px);font-weight:800;opacity:.22;line-height:.85;color:#fff;margin:0}
+  .title-slide{background:radial-gradient(120% 120% at 15% 0%,#fff8f0,var(--bg));justify-content:center}
+  .title-slide h1{font-size:clamp(34px,6.5vw,72px)}
+  .title-slide .lede{font-size:clamp(16px,2.2vw,24px);color:var(--muted);max-width:60ch;margin:.3em 0 0}
+  .title-slide .meta{margin-top:2em;font-size:14px;color:var(--muted)}
+  .kbd{background:var(--surface);border:1px solid var(--border);border-bottom-width:2px;border-radius:6px;padding:.05em .5em;font-size:.85em;font-family:inherit}
+  #bar{position:fixed;top:0;left:0;height:4px;background:var(--brand);width:0;transition:width .2s ease;z-index:30}
+  #hud{position:fixed;bottom:13px;right:18px;font-size:13px;color:var(--muted);z-index:30;font-variant-numeric:tabular-nums}
+  #title-hud{position:fixed;bottom:13px;left:18px;font-size:12px;color:var(--muted);z-index:30;text-transform:uppercase;letter-spacing:.1em}
+  #overview{position:fixed;inset:0;background:var(--bg);z-index:40;display:none;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;padding:24px;overflow:auto;align-content:start}
+  #overview.on{display:grid}
+  .thumb{border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:12px;cursor:pointer;font-size:12px;color:var(--muted);height:120px;overflow:hidden;line-height:1.35}
+  .thumb:hover{border-color:var(--brand)}
+  .thumb b{display:block;color:var(--brand);margin-bottom:5px;font-size:13px}
+  .thumb.div{background:var(--brand-soft)}
+  @media print{
+    html,body,#deck{height:auto;overflow:visible}
+    .slide{display:flex!important;position:relative;page-break-after:always;height:100vh;inset:auto}
+    #bar,#hud,#title-hud,#overview{display:none!important}
+  }
+</style>
+</head>
+<body>
+<div id="bar"></div>
+<div id="deck">
+<section class="slide title-slide"><h1>BAM Mutual Aid System V2</h1><p class="lede">A standalone, self-hostable reference implementation of the BAM V2 spec — intake, outreach, check-in, expiration, PII scrubbing, and metrics for a mutual-aid group, in one Python service.</p><p class="meta"><span class="badge">Web console /app/</span> <span class="badge">Python service layer</span> <span class="badge">JSON HTTP API</span> <span class="badge">CLI (bam ...)</span><br><br>navigate with <span class="kbd">→</span> / <span class="kbd">Space</span>, overview with <span class="kbd">O</span></p></section>
+
+<section class="slide divider"><p class="kicker">01</p><h1>Overview</h1><p class="subhead">What the BAM Mutual Aid System V2 reference implementation is, and the spec it implements.</p></section>
+
+<section class="slide"><h2>What it is</h2><p class="subhead">A standalone, self-hostable reference implementation of the BAM V2 spec.</p><p>A single Python service implementing the <b>BAM Mutual Aid System V2</b> specification: intake, distribution outreach, check-in, no-show handling, request auto-expiration, PII scrubbing, and website metrics for a mutual-aid group.</p><p>BAM = <b>Bushwick Ayuda Mutua</b>, a Brooklyn neighborhood mutual-aid group that runs appointment-based goods distributions. It implements the spec in <code>bushwickayudamutua/specs</code> PR #1; the repo is <code>github.com/bushwickayudamutua/bam-v2</code> (public).</p><p>Four surfaces, one codebase:</p><p><span class="badge">Web console /app/</span> <span class="badge">Python service layer</span> <span class="badge">JSON HTTP API</span> <span class="badge">CLI (bam ...)</span></p><div class="note">Every flow is exposed all four ways over the same service functions in <code>bam/services/</code>.</div></section>
+
+<section class="slide"><h2>The four surfaces</h2><p class="subhead">The same flows, reachable four ways.</p><table><tr><th>Surface</th><th>Where</th><th>Detail</th></tr><tr><td>Web console</td><td><code>/app/</code></td><td>6 views; plain HTML/CSS/vanilla JS served from <code>bam/web/</code>. <code>/</code> redirects there.</td></tr><tr><td>Service layer</td><td><code>bam/services/</code></td><td>intake, outreach, checkin, expiration, privacy, metrics.</td></tr><tr><td>HTTP API</td><td><code>/docs</code></td><td>19 routes across 7 routers; OpenAPI docs at <code>/docs</code>.</td></tr><tr><td>CLI</td><td><code>bam ...</code></td><td>serve, init-db, process-intake, expire, website-data, scrub-pii, no-shows, import-airtable, blast.</td></tr></table><div class="note"><b>No build step:</b> no bundler, no CDN. The console runs fully offline and self-hosted, talking to the same JSON API.</div></section>
+
+<section class="slide"><h2>Stack</h2><p class="subhead">Python + FastAPI + SQLModel over SQLite, Postgres-capable.</p><ul><li>Python 3.10+ (<code>requires-python = "&gt;=3.10"</code>); CI matrix runs 3.11 and 3.12.</li><li><b>FastAPI</b> for the HTTP API and console; <b>SQLModel</b> ORM over <b>SQLite</b> by default.</li><li>Postgres-capable via <code>BAM_DATABASE_URL</code> (default <code>sqlite:///bam.db</code>).</li><li>Pluggable SMS provider: <code>console</code> (logs only, default) or <code>twilio</code>.</li><li>~3,700 lines of Python in <code>bam/</code>; 159 tests pass, CI green.</li></ul><pre><code><span class="cap">quickstart (README)</span>pip install -e ".[dev]"
+bam init-db      # create tables (SQLite bam.db by default)
+bam serve        # console at /app/ , API docs at /docs</code></pre></section>
+
+<section class="slide"><h2>The six data tables</h2><p class="subhead">Spec section 4, implemented as SQLModel tables in bam/models.py.</p><ul><li><b>Households</b> — recipient households; phone number is the unique key.</li><li><b>Requests</b> — goods/service requests linked to a household.</li><li><b>Social Service Requests</b> — services, tracked separately from goods.</li><li><b>Distros</b> — distribution events.</li><li><b>Fulfilled Request Count</b> — metrics, normalized to one row per (date, request type).</li><li><b>Assistance Request Form Submissions</b> — raw intake data.</li></ul><p>Status enums (verbatim from <code>bam/models.py</code>):</p><pre><code><span class="cap">RequestStatus / AppointmentStatus</span>RequestStatus     = Open | Timeout | Delivered
+AppointmentStatus = Booked | Checked-in | Missed</code></pre></section>
+
+<section class="slide"><h2>Request-type catalog</h2><p class="subhead">Trilingual labels mirrored verbatim from the production Airtable base.</p><p><code>bam/request_types.py</code> carries the production base's select options verbatim: <b>41 GOODS + 13 SOCIAL_SERVICES</b> (production selects) plus <b>12 SPEC_COMPAT</b> spec-only extras = <b>66 types</b>. <b>12 LANGUAGES</b>.</p><p>Labels are UTF-8 trilingual, one per select option, e.g.:</p><pre><code><span class="cap">GOODS: pots_pans (30-day expiry tier)</span>Ollas y Sartenes / Pots &amp; Pans / 鍋碗瓢盆</code></pre><pre><code><span class="cap">LANGUAGES entry</span>Español / Spanish / 西班牙语</code></pre><p>Intake accepts a canonical key (<code>pots_pans</code>, <code>soap</code>) <b>or</b> any language segment of a label, and <code>normalize_type</code> resolves both to the same key.</p></section>
+
+<section class="slide divider"><p class="kicker">02</p><h1>Context</h1><p class="subhead">The production stack this spec targets, what V2 fixes, and how this repo relates.</p></section>
+
+<section class="slide"><h2>The current production system</h2><p class="subhead">Airtable + Fillout + bam-automation + Dialpad.</p><table><tr><th>Layer</th><th>Tool</th></tr><tr><td>Database</td><td>Airtable</td></tr><tr><td>Intake forms</td><td>Fillout (multi-language)</td></tr><tr><td>Automation</td><td>Digital Ocean Functions (<code>bam-automation</code>)</td></tr><tr><td>SMS</td><td>Dialpad API</td></tr><tr><td>Email</td><td>Mailjet</td></tr><tr><td>Address validation</td><td>Google Maps + NYC Planning Labs</td></tr></table><p>Operational scale: 3 appointment-based distributions per week, ~60 appointments each, outreach targeting 240 people at a ~25% confirmation rate.</p></section>
+
+<section class="slide"><h2>The problem V2 addresses</h2><p class="subhead">Spec section 1: technical debt, manual steps, data privacy.</p><p>The spec's problem statement: the current system <b>has technical debt, relies on manual intervention for key workflows, and needs better data-privacy practices</b>.</p><ul><li><b>Manual steps</b> — text-blast targeting requires hand-built Airtable views; post-distro inventory is informal text-based reporting.</li><li><b>Data privacy</b> — addresses stored in plain text; PII not anonymized after fulfillment.</li><li><b>Edge cases</b> — multiple households sharing one phone break deduplication; multiple phones per household create duplicate households.</li><li><b>Concessions</b> — the 14-day expiration window (30 for pots &amp; pans) may be too short for some needs.</li></ul></section>
+
+<section class="slide"><h2>No existing platform fit</h2><p class="subhead">Platform research: 62+ platforms surveyed, none met requirements.</p><p>The platform research (<code>platform-research-summary.md</code>, dated 2025-11-29) surveyed 62+ platforms and concluded <b>no platform meets BAM's requirements out-of-the-box</b>. Closest match, Crown Heights Mutual Aid App, scored ~70% but was "severely undertested" and lacked multi-language intake, appointment scheduling, and auto-expiration.</p><p>What made BAM's needs unique (per the research):</p><ul><li>Household-based tracking with phone number as the unique key.</li><li>Multi-language intake across 11 languages.</li><li>Appointment-based distributions with 25%-confirmation planning.</li><li>Request-type-specific auto-expiration (14 vs 30 days).</li></ul><p>Its recommendation: enhance the existing Airtable stack rather than replace it.</p></section>
+
+<section class="slide"><h2>How this repo relates</h2><p class="subhead">A reference implementation of the same spec, not a replacement.</p><p>The research recommends enhancing the Airtable stack; <b>this repo is neither that path nor a rip-and-replace.</b> It is a reference implementation of the same V2 spec as a single Python service, so the spec's flows are concrete and testable end-to-end.</p><div class="cols"><div><p><b>Production stack</b></p><ul><li>Airtable database</li><li>Airtable automations</li><li>Dialpad SMS</li></ul></div><div><p><b>This repo</b></p><ul><li>SQLModel/SQLite (or Postgres)</li><li>FastAPI service</li><li>Pluggable SMS provider</li></ul></div></div><p>Airtable lookup/rollup/formula fields are computed in code (<code>bam/models.py</code>); the wide <code>Fulfilled Request Count</code> table is normalized to one row per (date, request type). It also serves as a self-hostable fallback if the team outgrows Airtable.</p></section>
+
+<section class="slide"><h2>Migrated from real production data</h2><p class="subhead">bam import-airtable pulled the production V2 base (appjIo54Z8MWrqhlI).</p><p><code>bam import-airtable</code> migrated BAM's production V2 base — the same base the spec's schema was documented from — into the local database. Imported counts:</p><table><tr><th>Table</th><th>Rows</th></tr><tr><td>Households</td><td>1,252</td></tr><tr><td>Requests</td><td>5,390 (all currently Open)</td></tr><tr><td>Social-service rows</td><td>2,382 (1,478 NYC Mesh internet installs + 904 other)</td></tr><tr><td>Fulfilled-count rows</td><td>312</td></tr><tr><td>Distros / form submissions</td><td>0 / 0</td></tr></table><div class="note"><b>All migrated requests are Open</b> — the V1&#8594;V2 migration carried open requests only. The import is idempotent (keyed by Airtable record id) and lossless by default. <b>PII caution:</b> the snapshot and SQLite DB hold real names, phones, and addresses; both are gitignored.</div></section>
+
+<section class="slide"><h2>Two open questions for the BAM team</h2><p class="subhead">Spec ambiguities flagged in SPEC-MAPPING.md, not silently resolved.</p><ul><li><b>Intake-row deletion.</b> Spec 6.1 step 6 says "deletes Intake Table row", but the spec's own sequence diagram and Households schema link submissions to the household. This implementation <b>keeps and scrubs</b> the rows instead (SPEC-MAPPING decision 1).</li><li><b>A6 "no longer needs goods".</b> The outreach flowchart routes it to <code>Timeout</code>; the 6.4 table row says "mark complete". This implementation follows the flowchart — <code>Timeout</code> with a note — to avoid inflating fulfillment metrics (decision 4).</li></ul><div class="note">Both diverge from (or resolve a contradiction in) the spec text and are flagged for the team to confirm rather than silently chosen.</div></section>
+
+<section class="slide divider"><p class="kicker">03</p><h1>Architecture</h1><p class="subhead">FastAPI app factory, a service layer over SQLModel sessions, and a no-build offline console.</p></section>
+
+<section class="slide"><h2>Stack &amp; shape</h2><p class="subhead">One Python service; the same code runs on SQLite locally and Postgres in production.</p><ul><li>Python 3.10+ (CI matrix 3.11 + 3.12), <code>FastAPI</code> + <code>SQLModel</code> over SQLite; Postgres-capable via <code>BAM_DATABASE_URL</code>.</li><li>Reference implementation of the BAM V2 spec (<code>bushwickayudamutua/specs</code> PR #1) as a single self-hostable service.</li><li>Four surfaces over one core: web console at <code>/app/</code>, service functions in <code>bam/services/</code>, JSON HTTP API (docs at <code>/docs</code>), and the <code>bam</code> CLI.</li><li>~3,700 lines of Python in <code>bam/</code>; 159 tests pass, CI green.</li></ul><div class="note">Airtable lookup/rollup/formula fields are recomputed in code (<code>bam/models.py</code>); the wide <code>Fulfilled Request Count</code> table is normalized to one row per (date, request type).</div></section>
+
+<section class="slide"><h2>App factory: create_app()</h2><p class="subhead">bam/api/main.py wires seven routers, then mounts the static console last.</p><pre><code><span class="cap">bam/api/main.py</span>def create_app() -&gt; FastAPI:
+    app = FastAPI(title="BAM Mutual Aid System V2", lifespan=_lifespan)
+    init_db()
+    app.include_router(intake.router)
+    app.include_router(outreach.router)
+    app.include_router(checkin.router)
+    app.include_router(distros.router)
+    app.include_router(jobs.router)
+    app.include_router(metrics.router)
+    app.include_router(catalog.router)
+    ...
+    app.mount("/app", StaticFiles(directory=str(web_dir), html=True), name="web")</code></pre><ul><li><code>init_db()</code> runs eagerly (so plain <code>TestClient(create_app())</code> works) and again in the <code>_lifespan</code> hook for normal server startup.</li><li>The console is mounted <b>last</b> so <code>/app</code> never shadows an API route; <code>GET /</code> returns <code>RedirectResponse("/app/")</code>.</li></ul></section>
+
+<section class="slide"><h2>Service layer over sessions</h2><p class="subhead">Routes are thin: resolve a session, call a service function, map errors.</p><ul><li>API routes inject a session via <code>Depends(get_session)</code>, then delegate to <code>bam.services.*</code> (all business logic lives there, not in the routes).</li><li><code>get_session()</code> is a FastAPI dependency that yields a <code>Session</code> from a shared engine and closes it via <code>with</code>.</li><li>CLI commands open their own session explicitly and print a JSON report:</li></ul><pre><code><span class="cap">bam/cli.py — cmd_expire</span>init_db()
+with Session(get_engine()) as session:
+    report = expire_stale_requests(session)
+_print_json(report.model_dump(mode="json"))</code></pre><p>The same service function (e.g. <code>expire_stale_requests(session)</code>) backs both the HTTP route and the CLI.</p></section>
+
+<section class="slide"><h2>Engine &amp; DB config</h2><p class="subhead">bam/db.py: one lazily-built engine, SQLite-aware connect args.</p><pre><code><span class="cap">bam/db.py</span>def get_engine() -&gt; Engine:
+    global _engine
+    if _engine is None:
+        connect_args = {}
+        if settings.database_url.startswith("sqlite"):
+            connect_args["check_same_thread"] = False
+        _engine = create_engine(settings.database_url, connect_args=connect_args)
+    return _engine</code></pre><ul><li><code>_engine</code> is a module-level singleton; <code>set_engine()</code> lets tests swap in an in-memory SQLite engine.</li><li><code>init_db()</code> imports <code>bam.models</code> to register tables, then runs <code>SQLModel.metadata.create_all(...)</code>.</li><li><code>utcnow()</code> returns tz-aware UTC; business dates are derived in <code>BAM_LOCAL_TIMEZONE</code> so timestamps stay UTC.</li></ul></section>
+
+<section class="slide"><h2>Error mapping: NotFoundError -&gt; 404</h2><p class="subhead">Classification by exception class, never by message text.</p><pre><code><span class="cap">bam/errors.py</span>class NotFoundError(ValueError):
+    """An id passed to a service did not resolve to a row."""</code></pre><pre><code><span class="cap">bam/api/routes/__init__.py</span>def value_error_to_http(exc: ValueError) -&gt; HTTPException:
+    status_code = 404 if isinstance(exc, NotFoundError) else 400
+    return HTTPException(status_code=status_code, detail=str(exc))</code></pre><ul><li>Services raise <code>NotFoundError</code> for unknown ids and plain <code>ValueError</code> for everything else; routes call <code>value_error_to_http(exc)</code>.</li></ul><div class="note"><b>Why class, not substring:</b> messages embed user-supplied values, so matching text would let a payload like <code>outcome="number not found"</code> masquerade as a missing household.</div></section>
+
+<section class="slide divider"><p class="kicker">04</p><h1>Data Model</h1><p class="subhead">Six SQLModel tables over SQLite/Postgres, with Airtable's formula fields recomputed in code.</p></section>
+
+<section class="slide"><h2>Six tables (spec section 4)</h2><p class="subhead">bam/models.py — SQLModel classes, table=True</p><p>The relational store maps Airtable's six sheets to SQLModel tables:</p><table><tr><th>Class</th><th>__tablename__</th><th>Role</th></tr><tr><td><code>Household</code></td><td><code>households</code></td><td>Person/record: phone, email, languages, appointment, outreach flags</td></tr><tr><td><code>Request</code></td><td><code>requests</code></td><td>One goods request; canonical <code>type</code>, status, delivery address</td></tr><tr><td><code>SocialServiceRequest</code></td><td><code>social_service_requests</code></td><td>Social-service ask; adds <code>internet_access</code>, <code>roof_accessible</code></td></tr><tr><td><code>Distro</code></td><td><code>distros</code></td><td>Distribution event: date_time, location, duration_minutes</td></tr><tr><td><code>FulfilledRequestCount</code></td><td><code>fulfilled_request_counts</code></td><td>One row per (date, request_type)</td></tr><tr><td><code>FormSubmission</code></td><td><code>form_submissions</code></td><td>Raw intake (Assistance Request Form Submissions)</td></tr></table></section>
+
+<section class="slide"><h2>Household: key fields</h2><p class="subhead">The record a request hangs off</p><ul><li><code>phone_number</code> — E.164, <code>index=True, unique=True</code>; the natural key for dedupe</li><li><code>phone_hash</code> — <code>sha256(E.164)</code>, indexed; survives scrubbing so a re-request reconnects to history</li><li><code>languages: list[str]</code> — stored as JSON (<code>sa_column=Column(JSON)</code>)</li><li><code>appointment_status</code> — the <code>AppointmentStatus</code> enum; <code>missed_appointment_count</code> makes the "timeout after 2nd missed appointment" rule explicit and resets on attendance</li><li>Outreach flags: <code>last_texted</code>, <code>last_called</code>, <code>last_attended</code>, <code>needs_delivery</code>, <code>needs_email_outreach</code></li><li>Relationships to <code>requests</code>, <code>social_service_requests</code>, <code>form_submissions</code></li></ul></section>
+
+<section class="slide"><h2>Request &amp; SocialServiceRequest</h2><p class="subhead">Shared status/date shape; different extras</p><ul><li><code>type: str</code> — canonical key from <code>bam.request_types</code>, indexed; a <code>label</code> property resolves via <code>label_for(self.type)</code></li><li><code>household_id</code> — <code>foreign_key="households.id"</code></li><li>Timestamps: <code>request_opened_at</code>, <code>status_last_updated_at</code> (UTC); <code>processing_date: date | None</code> set on Delivered/Timeout</li><li><code>Request</code> only: delivery address fields for furniture/large items — <code>street_address</code>, <code>city_state</code>, <code>zip_code</code>, <code>geocode</code>, <code>address</code></li><li><code>SocialServiceRequest</code> only: <code>internet_access: list[str]</code> (JSON) and <code>roof_accessible: bool</code> — for the NYC Mesh install path</li></ul></section>
+
+<section class="slide"><h2>Two status enums</h2><p class="subhead">String-valued enums, Airtable labels preserved</p><div class="cols"><div><pre><code><span class="cap">RequestStatus(str, Enum)</span>OPEN = "Open"
+TIMEOUT = "Timeout"
+DELIVERED = "Delivered"</code></pre></div><div><pre><code><span class="cap">AppointmentStatus(str, Enum)</span>BOOKED = "Booked"
+CHECKED_IN = "Checked-in"
+MISSED = "Missed"</code></pre></div></div><p><code>Request.status</code> defaults to <code>RequestStatus.OPEN</code> and is indexed. All 5,390 migrated requests are currently <code>Open</code> — the V1→V2 migration carried open requests only.</p></section>
+
+<section class="slide"><h2>Processing Date: the +14 / +30 formula</h2><p class="subhead">apply_status_change() — models.py</p><p>Airtable's Processing Date formula is recomputed in code when status changes. The base date is the <b>local</b> business date (<code>local_date(now)</code>), so an evening distro isn't recorded under the next UTC day:</p><pre><code><span class="cap">apply_status_change (spec section 4)</span>if status == RequestStatus.DELIVERED:
+    days = (
+        expiry_days_for(request.type)
+        if isinstance(request, Request)
+        else default_expiry_days()
+    )
+    request.processing_date = local_date(now) + timedelta(days=days)
+elif status == RequestStatus.TIMEOUT:
+    request.processing_date = local_date(now) + timedelta(days=default_expiry_days())
+else:
+    request.processing_date = None</code></pre><ul><li>Delivered: +14 days (+30 only for Pots &amp; Pans, via <code>expiry_days_for</code>)</li><li>Timeout: +14 days; social-service requests always use the 14-day window</li></ul></section>
+
+<section class="slide"><h2>Privacy provenance: hash, anonymize, airtable_id</h2><p class="subhead">Three columns that make scrubbing and migration reversible-enough</p><ul><li><code>phone_hash</code> — set at intake and preserved when the scrub nulls <code>phone_number</code>; a returning household reconnects by hash</li><li><code>anonymized_at: datetime | None</code> — timestamp the household was scrubbed; a re-request clears it back to <code>None</code></li><li><code>airtable_id</code> — indexed, unique; ties each row back to its source Airtable record for idempotent import</li></ul><p>The scrub (<code>scrub_expired_pii</code>) backfills the hash before nulling PII:</p><pre><code><span class="cap">bam/services/privacy.py</span>if household.phone_number and not household.phone_hash:
+    household.phone_hash = hash_phone(household.phone_number)
+_null_fields(household, ("phone_number", "name", "email", "email_error", "notes"))
+household.anonymized_at = now</code></pre><p><code>hash_phone</code> is <code>sha256(e164).hexdigest()</code> (bam/validation.py).</p></section>
+
+<section class="slide"><h2>Airtable lookups/rollups computed in code</h2><p class="subhead">No stored formula columns — recomputed by query</p><ul><li><b>Delivered Request Types</b> (Household lookup): <code>build_checkin_view</code> queries <code>distinct</code> <code>type</code> where status is <code>DELIVERED</code>, for both request kinds, and concatenates them into <code>delivered_request_types</code></li><li><b>Open Request Types</b> (rollup): <code>outreach.py</code> computes <code>sorted({r.type for r in open_requests})</code> per household, plus <code>oldest_open_request_at = min(...)</code> for outreach ordering</li><li><b>Processing Date / expiry</b>: derived by <code>apply_status_change</code>, not stored as a formula</li></ul><div class="note">These are query-time derivations, so there is no <b>stale</b> cached column to reconcile — the tradeoff Airtable's rollups made.</div></section>
+
+<section class="slide"><h2>Normalized-schema decisions</h2><p class="subhead">Where V2 deliberately departs from the Airtable schema (models.py docstring)</p><ul><li><b>Fulfilled Request Count</b>: one row per <code>(date, request_type)</code> with a <code>UniqueConstraint("date", "request_type")</code> — replaces Airtable's ~50-column-wide table</li><li><b>Zip codes stored as strings</b> even though Airtable declares "number", so leading-zero zips survive; the intake schema coerces numeric input (<code>_coerce_zip</code>)</li><li><b>Legacy fields dropped</b>: <code>Legacy First/Last Date Submitted</code> and <code>Legacy Date Submitted</code> are omitted — a V1 import maps the legacy date onto <code>request_opened_at</code></li><li><b>Timestamps UTC</b>; business dates derived via <code>local_date</code> in the configured timezone</li></ul></section>
+
+<section class="slide divider"><p class="kicker">05</p><h1>Request-Type Catalog</h1><p class="subhead">66 trilingual types resolved to stable keys, plus 12 languages — one source served at GET /catalog.</p></section>
+
+<section class="slide"><h2>66 types in three lists</h2><p class="subhead">bam/request_types.py</p><p>Each type is a frozen <code>RequestType(key, label, category, expiry_days=14)</code>. <code>ALL_TYPES = GOODS + SOCIAL_SERVICES + SPEC_COMPAT</code>, indexed by key in <code>BY_KEY</code>:</p><table><tr><th>List</th><th>Count</th><th>Source</th></tr><tr><td><code>GOODS</code></td><td>41</td><td>Production Airtable V2 selects (verbatim)</td></tr><tr><td><code>SOCIAL_SERVICES</code></td><td>13</td><td>Production selects (11 social + <code>internet</code> + <code>mesh_internet</code>)</td></tr><tr><td><code>SPEC_COMPAT</code></td><td>12</td><td>Spec section 9 extras not in production; spec-derived labels</td></tr></table><p>Labels mirror production base <code>appjIo54Z8MWrqhlI</code> (pulled 2026-07-06). Goods categories: food, toiletries, household, furniture, kitchen.</p></section>
+
+<section class="slide"><h2>A real trilingual label</h2><p class="subhead">Español / English / 中文, verbatim from the production base</p><pre><code><span class="cap">GOODS — soap (category: toiletries)</span>RequestType(
+  "soap",
+  "Jab&oacute;n &amp; Productos de ba&ntilde;o / Soap &amp; Shower Products / 肥皂和淋浴用品",
+  "toiletries",
+)</code></pre><ul><li>The key <code>soap</code> is the stable machine identifier stored in <code>Request.type</code></li><li>The label is one string with three <code>" / "</code>-separated language segments (Spanish / English / Chinese)</li><li><code>Request.label</code> resolves it at read time via <code>label_for(self.type)</code></li></ul></section>
+
+<section class="slide"><h2>normalize_type: one key from many inputs</h2><p class="subhead">Resolves keys, full labels, any language segment, or an alias</p><p>Intake payloads and Airtable column names — in any form language or revision — resolve to the same canonical key:</p><pre><code><span class="cap">normalize_type(value) -&gt; str | None</span>candidate = value.strip()
+if candidate in BY_KEY:
+    return candidate
+match = _BY_LABEL_SEGMENT.get(candidate.lower())
+if match is not None:
+    return match.key
+for segment in candidate.split(" / "):
+    match = _BY_LABEL_SEGMENT.get(segment.strip().lower())
+    if match is not None:
+        return match.key
+return None</code></pre><ul><li><code>_BY_LABEL_SEGMENT</code> is prebuilt from every full label, each split segment, and both alias maps (first-wins via <code>setdefault</code>)</li><li>Unresolved values return <code>None</code> — intake reports them as <code>unknown_types</code></li></ul></section>
+
+<section class="slide"><h2>Aliases: item names and legacy wording</h2><p class="subhead">ITEM_ALIASES + LEGACY_ALIASES feed the segment index</p><div class="cols"><div><p><b>ITEM_ALIASES</b> — form item names / shorthand:</p><ul><li><code>"dresser"</code> &rarr; <code>clothes_dresser</code></li><li><code>"fridge"</code> &rarr; <code>refrigerator</code></li><li><code>"ac"</code> &rarr; <code>air_conditioner</code></li><li><code>"diapers"</code> &rarr; <code>baby_diapers</code></li></ul></div><div><p><b>LEGACY_ALIASES</b> — older/spec &amp; simplified-Chinese wording:</p><ul><li><code>"comida"</code> &rarr; <code>groceries</code></li><li><code>"卫生巾"</code> &rarr; <code>pads</code></li><li><code>"住房"</code> &rarr; <code>housing</code></li><li><code>"微波炉"</code> &rarr; <code>microwave</code></li></ul></div></div><p>So a submission using the spec's simplified-Chinese variant still resolves even though the catalog stores the production (often traditional) string.</p></section>
+
+<section class="slide"><h2>Expiry tiers and the 12 languages</h2><p class="subhead">Two tiers resolved against settings; language vocabulary is shared</p><ul><li><b>Standard tier</b> — <code>DEFAULT_EXPIRY_DAYS = 14</code> (all types except one)</li><li><b>Extended tier</b> — <code>EXTENDED_EXPIRY_DAYS = 30</code>, only <code>pots_pans</code> (<code>expiry_days=EXTENDED_EXPIRY_DAYS</code>)</li><li><code>expiry_days_for(key)</code> maps the tier onto <code>settings.extended_expiry_days</code> / <code>default_expiry_days</code>, so <code>BAM_DEFAULT_EXPIRY_DAYS</code> / <code>BAM_EXTENDED_EXPIRY_DAYS</code> overrides apply everywhere</li></ul><p><code>LANGUAGES</code> holds 12 verbatim Households.Languages options (11 supported + Other), e.g. <code>"Espa&ntilde;ol / Spanish / 西班牙语"</code> and <code>"Criollo Haitiano / Haitian Creole / 法屬歸融語"</code>.</p></section>
+
+<section class="slide"><h2>Single source of truth: GET /catalog</h2><p class="subhead">bam/api/routes/catalog.py — so console views can't drift</p><pre><code><span class="cap">GET /catalog</span>return {
+    "goods": [entry(t) for t in GOODS],
+    "social_services": [entry(t) for t in SOCIAL_SERVICES],
+    "languages": list(LANGUAGES),
+}</code></pre><ul><li>Each <code>entry</code> is <code>{key, label, category}</code></li><li>The endpoint serves <b>GOODS + SOCIAL_SERVICES + LANGUAGES</b> — the production vocabulary the console builds UI from</li><li><code>SPEC_COMPAT</code> is <b>not</b> exposed here: it exists so intake accepts spec-only types from forms, but isn't offered as a picker option</li></ul></section>
+
+<section class="slide divider"><p class="kicker">06</p><h1>Intake Flow</h1><p class="subhead">Assistance-request form to Household + Request rows (spec 6.1)</p></section>
+
+<section class="slide"><h2>The pipeline: submit_form then process_submission</h2><p class="subhead">bam/services/intake.py, spec 6.1 steps 1-7</p><p>Two functions in <code>bam/services/intake.py</code> split storage from processing; <code>intake_and_process</code> chains them, and the API does exactly that.</p><ul><li><code>submit_form</code> stores the raw <code>FormSubmission</code> row verbatim, stamping <code>created_at</code> (steps 1-2).</li><li><code>process_submission</code> validates, matches/creates the household, links the submission, opens Request and SocialServiceRequest rows, then sets <code>processed_at</code> (steps 3-7).</li><li><code>process_pending</code> runs every submission with <code>processed_at IS NULL</code>, ordered by id.</li></ul><pre><code><span class="cap">bam/api/routes/intake.py:15</span>@router.post("/intake/submissions", response_model=IntakeResult, status_code=201)
+def create_submission(payload: FormSubmissionIn, session: Session = Depends(get_session)):
+    return intake.intake_and_process(session, payload)</code></pre><div class="note"><b>Note:</b> spec 6.1 step 6 says delete the intake row; per SPEC-MAPPING decision 1 the row is instead kept and linked to the household, and the privacy scrub clears its PII later.</div></section>
+
+<section class="slide"><h2>Validation &amp; flags: phone, email, hash</h2><p class="subhead">bam/validation.py</p><p>Each submission's phone and email pass through <code>bam/validation.py</code> before matching.</p><ul><li><code>validate_phone</code> parses to E.164 with default region <code>US</code>; returns <code>PhoneValidation(normalized, valid, international)</code>. A number valid but outside the US sets <code>international=True</code>.</li><li><code>validate_email_address</code> returns <code>EmailValidation(normalized, error)</code>; a bad address yields <code>error</code>, not an exception.</li><li><code>hash_phone(e164)</code> is <code>sha256</code> hex — the stable key that lets an anonymized household reconnect on re-request.</li></ul><p>Outcomes land on the household as spec flag fields: <code>invalid_phone_number</code> (<code>not phone.valid</code>), <code>intl_phone_number</code> (<code>phone.international</code>), and <code>email_error</code>.</p></section>
+
+<section class="slide"><h2>Household matching decision tree</h2><p class="subhead">phone -&gt; hash -&gt; invalid-raw -&gt; create</p><p>Matching order in <code>process_submission</code>, first hit wins:</p><ol><li><b>Valid phone:</b> find by exact <code>Household.phone_number == phone.normalized</code>.</li><li><b>Else phone_hash reconnect:</b> match <code>phone_hash == hash_phone(phone.normalized)</code>; if found, restore <code>phone_number</code> and clear <code>anonymized_at</code> (an anonymized household comes back).</li><li><b>Invalid phone:</b> match <code>phone_hash == hash_phone(raw_phone)</code> (raw string, stripped); if found, clear <code>anonymized_at</code>.</li><li><b>Invalid-phone fallback:</b> exact raw-string match against a prior submission's <code>phone_number</code> that already has a <code>household_id</code>, lowest id first (CONTRACT intake bullet 2).</li><li><b>No match:</b> create a new household.</li></ol><div class="note"><b>Note:</b> invalid-phone households store <code>phone_number=None</code> but keep <code>phone_hash = sha256(raw string)</code> so dedup and post-scrub reconnection still work.</div></section>
+
+<section class="slide"><h2>Update vs create; language merge</h2><p class="subhead">spec 6.1 CREATE / UPDATE branches</p><p><code>created_household = household is None</code> selects the branch.</p><div class="cols"><div><p><b>Create</b></p><ul><li>Sets <code>name</code>, <code>email</code>/<code>email_error</code>, <code>languages</code>, the phone flags, and (valid phone) <code>phone_number</code>.</li><li><code>phone_hash</code> = hash of normalized phone if valid, else of the raw string.</li></ul></div><div><p><b>Update (match)</b></p><ul><li>Overwrites <code>name</code> only if the submission supplies one.</li><li>Records <code>email_error</code>; keeps the last good <code>email</code> — a re-request typo does not erase it.</li><li>Merges new languages onto existing (append if not already present).</li><li>Refreshes phone flags and, if normalized, <code>phone_hash</code>.</li></ul></div></div><p>Either way the submission is linked via <code>submission.household_id = household.id</code>.</p></section>
+
+<section class="slide"><h2>Requests: one Open per goods type</h2><p class="subhead">normalize, dedup, furniture address, bed details</p><p>Goods keys are gathered from three form fields — <code>request_types</code>, <code>kitchen_items</code>, <code>furniture_items</code> — each run through <code>normalize_type</code> (resolves keys, trilingual labels, label segments, item aliases).</p><ul><li>Unresolved values, or ones that resolve to a social-service key, are pushed to <code>unknown_types</code> (a service in a goods field is malformed input).</li><li>Within one submission, duplicate goods keys are collapsed.</li><li>If the household already has an <code>Open</code> Request of that type (<code>_has_open</code>), the type is added to <code>skipped_duplicate_types</code> and no row is created.</li><li>New rows: <code>status=RequestStatus.OPEN</code>, <code>request_opened_at=now</code>.</li></ul><p>Furniture-category types copy <code>street_address</code>, <code>city_state</code>, <code>zip_code</code> and a joined <code>address</code>; the <code>furniture</code> type appends its <code>furniture_items</code> to notes. Bed-detail types (<code>mattress</code>/<code>bed</code>/<code>crib</code>/<code>furniture</code>) append <code>bed_details</code>.</p></section>
+
+<section class="slide"><h2>Social service requests &amp; timestamps</h2><p class="subhead">internet/roof; Processing Date NULL while Open</p><p>Each value in <code>social_service_requests</code> is normalized; if it is not a social-service key it goes to <code>unknown_types</code>. Within-submission duplicates are skipped, and an existing <code>Open</code> row of that type routes the key to <code>skipped_duplicate_types</code>.</p><ul><li>New <code>SocialServiceRequest</code>: <code>status=OPEN</code>, plus <code>internet_access</code> (list), <code>roof_accessible</code> (bool), and the address fields.</li><li>Both request tables set <code>request_opened_at = now</code> (Request Opened At = created time).</li><li>Processing Date is left NULL while a row is Open — it is stamped only on delivery/timeout, not at intake.</li></ul><div class="note"><b>Note:</b> reprocessing is guarded — if <code>processed_at</code> and <code>household_id</code> are already set, the call returns <code>IntakeResult(already_processed=True)</code> with no new rows.</div></section>
+
+<section class="slide"><h2>IntakeResult: what intake reports back</h2><p class="subhead">bam/schemas.py IntakeResult</p><p>Every call returns an <code>IntakeResult</code> (also the <code>201</code> body of <code>POST /intake/submissions</code>):</p><table><tr><th>Field</th><th>Meaning</th></tr><tr><td><code>submission_id</code>, <code>household_id</code></td><td>the processed submission and its household</td></tr><tr><td><code>created_household</code></td><td><code>True</code> = created, <code>False</code> = matched existing</td></tr><tr><td><code>created_request_ids</code></td><td>ids of new Open goods requests</td></tr><tr><td><code>created_social_service_request_ids</code></td><td>ids of new Open social-service requests</td></tr><tr><td><code>skipped_duplicate_types</code></td><td>types skipped because an Open row already existed</td></tr><tr><td><code>unknown_types</code></td><td>values that did not resolve / were in the wrong table</td></tr><tr><td><code>phone_valid</code></td><td>result of <code>validate_phone</code></td></tr><tr><td><code>already_processed</code></td><td><code>True</code> only on the idempotency short-circuit</td></tr></table></section>
+
+<section class="slide divider"><p class="kicker">07</p><h1>Outreach Flow</h1><p class="subhead">Spec 6.2 + outreach flowchart + error paths A4-A6</p></section>
+
+<section class="slide"><h2>build_outreach_list — the filtered candidate list</h2><p class="subhead">bam/services/outreach.py, spec 6.2 step 1</p><p>The admin reviews and approves the outreach list for a distro. <code>build_outreach_list()</code> produces the candidate set. A household qualifies only if <b>all</b> of these hold:</p><ul><li>Has at least one <code>Open</code> goods request (spec: "available supplies match")</li><li>Has a phone number and is not flagged <code>invalid_phone_number</code></li><li>No currently-<code>Booked</code> appointment (<code>appointment_status</code> is null or not <code>BOOKED</code>)</li><li>Language overlap with the distro's <code>languages</code> filter, when one is given</li><li><code>last_texted</code> / <code>last_attended</code> older than the exclusion windows (spec: "not recently attended")</li></ul><div class="note">A <code>request_types</code> filter narrows both the SQL join and the per-household <code>fulfillable</code> check, so only households whose open requests match the distro's available supplies are returned.</div></section>
+
+<section class="slide"><h2>The core filter, verbatim</h2><p class="subhead">SQL predicate + ordering</p><pre><code><span class="cap">bam/services/outreach.py — statement predicate</span>select(Household)
+    .join(Request)
+    .where(
+        Request.status == RequestStatus.OPEN,
+        col(Household.phone_number).is_not(None),
+        col(Household.invalid_phone_number).is_(False),
+        or_(
+            col(Household.appointment_status).is_(None),
+            Household.appointment_status != AppointmentStatus.BOOKED,
+        ),
+    )
+    .distinct()</code></pre><p>Recency windows are applied only when &gt; 0 (0 disables a window):</p><pre><code>texted_cutoff = today - timedelta(days=exclude_texted_within_days)
+# last_texted IS NULL OR last_texted &lt;= texted_cutoff</code></pre><p>Candidates sort by oldest fulfillable request, then id, then truncate to <code>limit</code>:</p><pre><code>candidates.sort(key=lambda c: (c.oldest_open_request_at, c.household_id))</code></pre></section>
+
+<section class="slide"><h2>OutreachCandidate — what the admin sees</h2><p class="subhead">bam/schemas.py, returned by POST /outreach/list</p><p>Each row carries enough to triage without a second query:</p><pre><code>class OutreachCandidate(BaseModel):
+    household_id: int
+    name: str | None = None
+    phone_number: str | None = None
+    languages: list[str] = []
+    open_request_types: list[str] = []
+    oldest_open_request_at: dt.datetime | None = None
+    last_texted: dt.date | None = None</code></pre><ul><li><code>oldest_open_request_at</code> is the min <code>request_opened_at</code> over fulfillable requests — the "Date of Oldest Fulfillable Request" the list is ordered by</li><li><code>open_request_types</code> is the sorted distinct set of the household's open request types</li><li>Naive SQLite datetimes are read as UTC via <code>_as_utc()</code> before comparison</li></ul></section>
+
+<section class="slide"><h2>send_text_blast — templated blast with rate limiting</h2><p class="subhead">bam/services/outreach.py, spec 6.2 step 2 + sequence diagram</p><p>Renders <code>[FIRST_NAME]</code> (first token of the household name) and <code>[REQUEST_URL]</code> per message, then sends via the injected <code>provider</code>. Per-household outcomes:</p><table><tr><th>Condition</th><th>Effect</th></tr><tr><td>Unknown household id</td><td>added to <code>unknown_household_ids</code>; blast continues</td></tr><tr><td>Missing phone</td><td><code>skipped_no_phone += 1</code> (no cap consumed)</td></tr><tr><td><code>invalid_phone_number</code></td><td><code>skipped_invalid += 1</code> (no cap consumed)</td></tr><tr><td>Over the cap</td><td><code>not_sent_over_limit += 1</code></td></tr><tr><td>Send <code>ok</code></td><td><code>sent += 1</code>; set <code>last_texted = TODAY()</code></td></tr><tr><td>Send failed</td><td><code>failed += 1</code>; error captured on the message row</td></tr></table><div class="note">Only successful provider sends count toward the cap and set <code>last_texted</code>. A single stale id does not abort outreach to the other 239 households.</div></section>
+
+<section class="slide"><h2>Cap, rate limit, and dry-run</h2><p class="subhead">spec: max 240, 30 msgs then 30s; BlastReport</p><p>Defaults (<code>bam/config.py</code>): <code>sms_max_messages</code>=<b>240</b> (<code>BAM_SMS_MAX_MESSAGES</code>), <code>sms_batch_size</code>=<b>30</b> (<code>BAM_SMS_BATCH_SIZE</code>), <code>sms_batch_pause_seconds</code>=<b>30</b> (<code>BAM_SMS_BATCH_PAUSE_SECONDS</code>).</p><pre><code><span class="cap">rate limit — spec 6.2: "30 msgs then 30s delay"</span>if batch_size &gt; 0 and attempted % batch_size == 0:
+    pause_pending = True
+# ...next iteration, before the next send:
+if pause_pending:
+    sleeper(settings.sms_batch_pause_seconds)</code></pre><ul><li>The pause fires <i>before the next</i> send, so it never sleeps after the final message</li><li><code>dry_run=True</code> builds the full <code>BlastReport</code> but calls <code>session.rollback()</code> — nothing persists, so a preview cannot poison the <code>last_texted</code> recency filter</li></ul></section>
+
+<section class="slide"><h2>confirm_appointment &amp; record_outreach_outcome (A4-A6)</h2><p class="subhead">spec 6.2 steps 3-4; spec 6.4 rows A4-A6</p><p><code>confirm_appointment()</code> books a confirmed recipient: sets <code>appointment_date</code>, <code>appointment_time</code>, and <code>appointment_status = BOOKED</code> (spec: volunteer manually marks confirmations).</p><p><code>record_outreach_outcome()</code> closes out a household after phone outreach. For every accepted outcome it times out all <code>Open</code> goods <b>and</b> social-service requests via <code>apply_status_change(..., TIMEOUT)</code>, clears any <code>Booked</code> appointment, and appends a tag to <code>household.notes</code>:</p><pre><code>OUTCOME_TAGS = {
+    "no_response_timeout": "[no response]",   # A4
+    "wrong_number":        "[wrong number]",  # A5
+    "no_longer_needed":    "[no longer needed]",  # A6
+}</code></pre><p><code>wrong_number</code> (A5) additionally sets <code>household.invalid_phone_number = True</code>, excluding it from future lists and blasts. Unknown outcome keys raise <code>ValueError</code>.</p></section>
+
+<section class="slide"><h2>A4 / A5 / A6 → outcome behavior</h2><p class="subhead">flowchart Timeout terminal vs 6.4 table</p><table><tr><th>Path</th><th>Outcome key</th><th>Requests</th><th>Extra effect</th></tr><tr><td>A4 — no response after phone attempts</td><td><code>no_response_timeout</code></td><td>all Open → <code>Timeout</code></td><td><code>[no response]</code> note</td></tr><tr><td>A5 — wrong number</td><td><code>wrong_number</code></td><td>all Open → <code>Timeout</code></td><td><code>invalid_phone_number = True</code> + <code>[wrong number]</code></td></tr><tr><td>A6 — no longer needs goods</td><td><code>no_longer_needed</code></td><td>all Open → <code>Timeout</code></td><td><code>[no longer needed]</code> note</td></tr></table><div class="note"><b>Open question for the BAM team:</b> the flowchart routes A6 ("yes but no longer in need") to the <code>Timeout</code> terminal, while the 6.4 table row A6 says "mark complete". We follow the flowchart and use <code>Timeout</code> — marking Delivered would inflate fulfillment metrics with goods never handed out (SPEC-MAPPING decision 4).</div></section>
+
+<section class="slide divider"><p class="kicker">08</p><h1>SMS Provider</h1><p class="subhead">The SMSProvider protocol, console vs Twilio, template rendering</p></section>
+
+<section class="slide"><h2>SMSProvider protocol + render_template</h2><p class="subhead">bam/sms/base.py</p><p>Outreach depends on a minimal structural protocol, not a concrete class:</p><pre><code>class SMSProvider(Protocol):
+    def send(self, to: str, body: str) -> SMSResult: ...
+
+@dataclass
+class SMSResult:
+    to: str
+    body: str
+    ok: bool
+    provider_id: str | None = None
+    error: str | None = None</code></pre><p>Template rendering is a plain string replace of the two spec placeholders:</p><pre><code>def render_template(template, *, first_name="", request_url=""):
+    return template.replace("[FIRST_NAME]", first_name or "") \
+                   .replace("[REQUEST_URL]", request_url or "")</code></pre><ul><li>Placeholders match the spec sequence diagram: <code>[FIRST_NAME]</code>, <code>[REQUEST_URL]</code></li><li>Templates are language-specific (spec 6.2 step 2), passed in by the caller</li></ul></section>
+
+<section class="slide"><h2>Provider selection — console default vs Twilio</h2><p class="subhead">bam/sms/base.py get_provider(); bam/config.py</p><p><code>get_provider()</code> picks the implementation from <code>BAM_SMS_PROVIDER</code> (default <code>console</code>):</p><pre><code>def get_provider(settings):
+    if settings.sms_provider == "twilio":
+        from bam.sms.twilio_provider import TwilioSMSProvider
+        return TwilioSMSProvider(
+            account_sid=settings.twilio_account_sid,
+            auth_token=settings.twilio_auth_token,
+            from_number=settings.twilio_from_number,
+        )
+    from bam.sms.console import ConsoleSMSProvider
+    return ConsoleSMSProvider()</code></pre><ul><li><b>Console</b> (default): logs each message and appends an <code>SMSResult</code> (<code>ok=True</code>, <code>provider_id=console-N</code>) to an in-memory <code>sent</code> list. Used for local dev, dry runs, and tests</li><li><b>Twilio</b>: optional dependency (<code>pip install 'bam-v2[twilio]'</code>); requires <code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code>, <code>TWILIO_FROM_NUMBER</code></li></ul></section>
+
+<section class="slide"><h2>TwilioSMSProvider — errors become result rows</h2><p class="subhead">bam/sms/twilio_provider.py</p><pre><code>def send(self, to: str, body: str) -&gt; SMSResult:
+    try:
+        message = self._client.messages.create(
+            to=to, from_=self._from_number, body=body)
+        return SMSResult(to=to, body=body, ok=True,
+                         provider_id=message.sid)
+    except Exception as exc:
+        return SMSResult(to=to, body=body, ok=False, error=str(exc))</code></pre><ul><li>A failed Twilio call does not raise into the blast loop — it returns <code>ok=False</code> with the error string, which lands on that household's <code>BlastMessage</code> and increments <code>failed</code></li><li>Missing credentials fail fast at construction with a <code>RuntimeError</code>; the <code>twilio</code> import error is remapped to an install hint</li></ul></section>
+
+<section class="slide"><h2>[REQUEST_URL] (randomized) — anti-spam tokening</h2><p class="subhead">spec 6.2 sequence diagram; BAM_RANDOMIZE_REQUEST_URL</p><p>The spec diagram sends <code>[REQUEST_URL] (randomized)</code>. Each message gets a unique <code>?r=&lt;token&gt;</code> variant of the form URL so carriers/providers don't flag hundreds of identical bodies as spam:</p><pre><code>request_url = settings.request_form_url
+if settings.randomize_request_url:
+    joiner = "&amp;" if "?" in request_url else "?"
+    request_url = f"{request_url}{joiner}r={make_token()}"</code></pre><ul><li>Token is <code>secrets.token_urlsafe(4)</code> by default; <code>token_factory</code> is injectable for deterministic tests</li><li>Base URL default: <code>https://forms.fillout.com/t/ivajQbwoWxus</code> (<code>BAM_REQUEST_FORM_URL</code>)</li><li>Set <code>BAM_RANDOMIZE_REQUEST_URL=0</code> to disable (also <code>false</code>/<code>no</code>/empty)</li></ul><div class="note">Same rationale as the legacy bam-automation <code>send_dialpad_sms</code>: identical bulk bodies get flagged, so a per-message query token keeps deliverability up.</div></section>
+
+<section class="slide divider"><p class="kicker">09</p><h1>Check-in, fulfillment &amp; no-shows</h1><p class="subhead">Distribution-day flow: lookup, mark delivered, and the end-of-event no-show pass (bam/services/checkin.py)</p></section>
+
+<section class="slide"><h2>Finding the household at check-in</h2><p class="subhead">spec 6.3 steps 2-3: lookup by phone, or by name if the recipient arrives without it</p><p>Two entry points, both returning a <code>CheckinView</code> assembled by <code>build_checkin_view</code>:</p><ul><li><code>lookup_by_phone(session, phone)</code> - normalizes the phone to E.164, then exact-matches <code>Household.phone_number</code>; falls back to the raw string if it cannot parse. Returns <code>None</code> if no match (the route raises 404).</li><li><code>search_by_name(session, name, limit=20)</code> - case-insensitive <code>ilike</code> match, ordered by name then id; returns <code>HouseholdMatch</code> rows (journey step 5: "check in via phone number/name").</li><li><code>view_for_household(session, household_id)</code> - the second half of a name-search check-in; raises <code>NotFoundError</code> on unknown id.</li></ul><p>Endpoints: <code>GET /households/lookup?phone=</code>, <code>GET /households/search?name=</code>, <code>GET /households/{household_id}</code>.</p></section>
+
+<section class="slide"><h2>What the CheckinView shows</h2><p class="subhead">open requests of both kinds, plus what the household already received</p><p><code>build_checkin_view</code> queries four sets, all filtered by household:</p><ul><li><b>open_requests</b> - goods <code>Request</code> rows where <code>status == OPEN</code>, ordered by <code>request_opened_at, id</code>.</li><li><b>open_social_service_requests</b> - the same for <code>SocialServiceRequest</code>.</li><li><b>delivered_request_types</b> - <code>DISTINCT</code> types where <code>status == DELIVERED</code>, goods then social, concatenated: <code>[*delivered, *delivered_social]</code>. Backs spec 4's Households "Delivered Request Types" lookup so volunteers see history.</li></ul><div class="note">The view does <b>not</b> itself mark the household Checked-in; that is a separate <code>POST /households/{id}/checkin</code> call.</div></section>
+
+<section class="slide"><h2>Check-in resets the miss counter</h2><p class="subhead">check_in() - spec 6.3 step 4 precursor + interpretation rule 5</p><p><code>check_in(session, household_id, now=None)</code> stamps three household fields and commits:</p><pre><code><span class="cap">bam/services/checkin.py, check_in()</span>household.appointment_status = AppointmentStatus.CHECKED_IN
+household.last_attended = local_date(now)
+household.missed_appointment_count = 0
+household.updated_at = now</code></pre><ul><li>Attending <b>resets</b> <code>missed_appointment_count</code> to 0 - a household that shows up starts fresh against the 2-miss timeout rule.</li><li><code>last_attended</code> is a <b>local business date</b> (<code>local_date</code>, default America/New_York), so an evening Brooklyn distro is not recorded under the next UTC day.</li></ul></section>
+
+<section class="slide"><h2>Fulfillment marks Delivered and counts it</h2><p class="subhead">fulfill_requests() - spec 6.3 step 4; idempotent; feeds Fulfilled Request Count</p><p><code>fulfill_requests(session, request_ids=(), social_service_request_ids=(), now=None)</code> resolves <b>all</b> ids first (unknown id -> <code>NotFoundError</code> before any mutation), then per object:</p><pre><code><span class="cap">bam/services/checkin.py, fulfill_requests()</span>for obj in resolved:
+    if obj.status == RequestStatus.DELIVERED:
+        continue
+    apply_status_change(obj, RequestStatus.DELIVERED, now=now)
+    session.add(obj)
+    increment_fulfilled_count(session, on_date, obj.type, commit=False)</code></pre><ul><li><b>Idempotent</b>: duplicate ids in one call are de-duped via <code>dict.fromkeys(...)</code>, and an already-<code>Delivered</code> request is skipped - not re-counted, <code>processing_date</code> not restamped.</li><li><b>Both kinds count</b>: goods and social-service deliveries increment <code>FulfilledRequestCount</code> for <code>(local_date(now), obj.type)</code> (SPEC-MAPPING decision 10).</li></ul><p>Endpoint: <code>POST /requests/fulfill</code> with <code>{request_ids, social_service_request_ids}</code>.</p></section>
+
+<section class="slide"><h2>Delivered sets the Processing Date window</h2><p class="subhead">apply_status_change() in bam/models.py - the spec 4 formula</p><p>Marking Delivered runs the spec 4 Processing Date formula:</p><pre><code><span class="cap">bam/models.py, apply_status_change()</span>if status == RequestStatus.DELIVERED:
+    days = (expiry_days_for(request.type)
+            if isinstance(request, Request)
+            else default_expiry_days())
+    request.processing_date = local_date(now) + timedelta(days=days)</code></pre><ul><li>Delivered goods: <code>+14</code> days (<code>+30</code> for <code>pots_pans</code>); social services always <code>+14</code>.</li><li>Windows come from <code>settings</code>-aware helpers, so <code>BAM_DEFAULT_EXPIRY_DAYS</code>/<code>BAM_EXTENDED_EXPIRY_DAYS</code> overrides apply everywhere.</li><li><code>processing_date</code> is later the gate for the privacy scrub's pass 1.</li></ul></section>
+
+<section class="slide"><h2>Partial fulfillment (A1)</h2><p class="subhead">out of stock? leave the request Open</p><p>There is no partial-fulfillment state (SPEC-MAPPING decision 6, spec section 7 design decision). Because <code>fulfill_requests</code> only touches the ids passed in, an out-of-stock item is handled by simply <b>not</b> including its id:</p><ul><li>Fulfilled ids -> <code>Delivered</code>; every other open request of that household stays <code>Open</code>.</li><li>Keeping it <code>Open</code> preserves the household's place in the outreach queue - the spec's stated reason: "Do not mark as fulfilled to prevent deprioritization."</li></ul></section>
+
+<section class="slide"><h2>The no-show pass (A2 / A3)</h2><p class="subhead">process_no_shows() - end-of-distro sequence; 2nd miss times out open requests</p><p><code>process_no_shows(session, distro_date, now=None)</code> selects every household still <code>Booked</code> for <code>distro_date</code> and, per household:</p><pre><code><span class="cap">bam/services/checkin.py, process_no_shows()</span>household.appointment_status = AppointmentStatus.MISSED
+household.missed_appointment_count += 1
+household.appointment_date = None
+household.appointment_time = None</code></pre><ul><li><b>A2 (1st miss)</b>: marked <code>Missed</code>, appointment cleared, count = 1; the household returns to the outreach queue for the next cycle.</li><li><b>A3 (2nd miss)</b>: when <code>missed_appointment_count &gt;= settings.max_missed_appointments</code> (default 2), <b>all</b> its open goods and social-service requests are set to <code>Timeout</code> via <code>apply_status_change</code>.</li></ul><p>Returns a <code>NoShowReport</code> (<code>missed_household_ids</code>, <code>timed_out_household_ids</code>). Endpoint: <code>POST /distros/no-shows</code> with <code>{distro_date}</code>; CLI: <code>bam no-shows --date YYYY-MM-DD</code>.</p><div class="note"><b>Note</b>: only <code>Booked</code> households for that exact date are touched; already Checked-in or Missed rows are skipped, and <code>max_missed_appointments</code> is overridable via <code>BAM_MAX_MISSED_APPOINTMENTS</code>.</div></section>
+
+<section class="slide divider"><p class="kicker">10</p><h1>Auto-expiration &amp; PII privacy</h1><p class="subhead">Stale requests time out on their window; inactive households are anonymized while keeping a phone hash so re-requests reconnect</p></section>
+
+<section class="slide"><h2>Auto-expiration of stale requests</h2><p class="subhead">expire_stale_requests() - spec 2 / 4 / 6.1 step 7</p><p><code>expire_stale_requests(session, now=None)</code> times out every <code>Open</code> request whose window, measured from <code>request_opened_at</code>, has elapsed:</p><pre><code><span class="cap">bam/services/expiration.py</span>window = timedelta(days=expiry_days_for(request.type))
+if now - _as_utc(request.request_opened_at) > window:
+    apply_status_change(request, RequestStatus.TIMEOUT, now=now)</code></pre><ul><li>Goods use the type's window: <b>14 days</b> standard, <b>30 days</b> for <code>pots_pans</code> (<code>expiry_days_for</code>).</li><li>Social-service requests always use the <b>14-day</b> window (<code>default_expiry_days()</code>).</li><li><code>_as_utc</code> treats naive datetimes as UTC (SQLite drops tzinfo on round-trip).</li></ul><p>Returns an <code>ExpirationReport</code> of timed-out ids. Cron: daily <code>bam expire</code>; endpoint <code>POST /jobs/expire</code>.</p></section>
+
+<section class="slide"><h2>The booked-only-if-current exemption</h2><p class="subhead">don't expire someone already scheduled - but don't let a stale booking be immortal</p><p>Before scanning requests, the pass collects households to spare:</p><pre><code><span class="cap">bam/services/expiration.py</span>booked_household_ids = set(session.exec(
+    select(Household.id).where(
+        Household.appointment_status == AppointmentStatus.BOOKED,
+        Household.appointment_date >= local_date(now),
+    )
+).all())</code></pre><ul><li>A currently <code>Booked</code> household is skipped - expiring someone already scheduled would defeat the queue (contract rule 3).</li><li>The <code>appointment_date &gt;= local_date(now)</code> clause is deliberate (decision 8): a <b>dangling</b> Booked status from a distro whose no-show pass never ran must not make its requests immortal.</li></ul><div class="note"><b>Why it matters</b>: open requests block household anonymization, so an immortal request would also retain PII indefinitely.</div></section>
+
+<section class="slide"><h2>PII scrub - three passes</h2><p class="subhead">scrub_expired_pii() - spec goal: hash sensitive data; background 8: V1 never anonymized after fulfillment</p><p><code>scrub_expired_pii(session, now=None, retention_days=None)</code> runs three passes (retention defaults to <code>settings.pii_retention_days</code>, 30 days; <code>cutoff = now - retention_days</code>) and returns a <code>ScrubReport</code> with counts.</p><div class="cols"><div><ul><li><b>Pass 1</b> - closed requests</li><li><b>Pass 2</b> - anonymize inactive households</li><li><b>Pass 3</b> - old form submissions</li></ul></div><div><ul><li>gated on <code>processing_date</code></li><li>gated on <code>updated_at</code> + no open requests</li><li>gated on <code>created_at</code> + processed</li></ul></div></div><p>All passes are time-frozen via <code>now</code> and time-based, so the daily <code>bam scrub-pii</code> job (<code>POST /jobs/scrub-pii</code>) is safe to re-run.</p></section>
+
+<section class="slide"><h2>Pass 1: scrub closed requests</h2><p class="subhead">Delivered/Timeout requests past their processing date lose address + notes</p><p>For requests whose <code>status in (DELIVERED, TIMEOUT)</code> and <code>processing_date &lt; today</code>, the PII fields are nulled:</p><ul><li>Goods (<code>_REQUEST_PII_FIELDS</code>): <code>street_address</code>, <code>city_state</code>, <code>zip_code</code>, <code>geocode</code>, <code>address</code>, <code>notes</code>.</li><li>Social (<code>_SOCIAL_REQUEST_PII_FIELDS</code>): <code>street_address</code>, <code>city_state</code>, <code>zip_code</code>, <code>address</code>, <code>notes</code>.</li><li>Closed social requests also clear <code>internet_access</code> (decision 13): a household's internet situation is kept only while the request is actionable.</li></ul><p><code>_null_fields</code> returns whether anything changed, so only genuinely-scrubbed rows bump <code>updated_at</code> and increment the report count.</p></section>
+
+<section class="slide"><h2>Pass 2: anonymize inactive households</h2><p class="subhead">the privacy story - keep the phone hash so re-requests reconnect</p><p>A household is anonymized only if it has <b>no</b> open requests of either kind, is not already anonymized, and its <code>updated_at</code> is older than the cutoff:</p><pre><code><span class="cap">bam/services/privacy.py, pass 2</span>if household.phone_number and not household.phone_hash:
+    household.phone_hash = hash_phone(household.phone_number)
+_null_fields(household,
+    ("phone_number", "name", "email", "email_error", "notes"))
+household.anonymized_at = now</code></pre><ul><li>The raw phone, name, email, email_error, and notes are nulled - but <b>phone_hash is preserved</b> (<code>sha256</code> of the E.164 / raw string).</li><li>On a later re-request, intake finds the household by <code>phone_hash</code> and restores its contact info - history reconnects instead of forking a duplicate.</li><li>Open requests block anonymization, which is exactly why the expiration exemption is date-bounded.</li></ul></section>
+
+<section class="slide"><h2>Pass 3: scrub old form submissions</h2><p class="subhead">kept-not-deleted intake rows lose raw PII after the retention window</p><p>For <code>FormSubmission</code> rows that are processed (<code>processed_at IS NOT NULL</code>), not yet scrubbed (<code>scrubbed_at IS NULL</code>), and older than the cutoff by <code>created_at</code>, the raw PII is nulled (<code>_SUBMISSION_PII_FIELDS</code>):</p><pre><code>name, phone_number, email, notes,
+street_address, city_state, zip_code</code></pre><ul><li><code>scrubbed_at = now</code> marks the row done so it is not re-scanned.</li><li>This realizes SPEC-MAPPING decision 1: the spec's 6.1 step 6 says <i>delete</i> the intake row, but its own diagram links submissions to households - so BAM-v2 <b>keeps the row and clears its PII</b>, preserving an auditable intake history without raw data.</li></ul><div class="note"><b>Open question for the BAM team</b>: if hard deletion is truly wanted, it is a small change in <code>bam/services/privacy.py</code>.</div></section>
+
+<section class="slide divider"><p class="kicker">11</p><h1>Metrics &amp; the website JSON</h1><p class="subhead">Open-request counts published hourly; fulfilled counts per (date, type).</p></section>
+
+<section class="slide"><h2>Two metrics surfaces</h2><p class="subhead">bam/services/metrics.py — spec 5 plus the Fulfilled Request Count table</p><ul><li><b>Open counts</b> — <code>open_request_counts()</code> tallies live <code>Open</code> requests per type; published to a JSON file by the hourly cron job.</li><li><b>Fulfilled counts</b> — <code>FulfilledRequestCount</code> is one row per <code>(date, request_type)</code>; <code>increment_fulfilled_count()</code> upserts it as check-in marks requests <code>Delivered</code>.</li></ul><p>The wide Airtable <code>Fulfilled Request Count</code> table is normalized to that per-(date, type) row shape.</p><div class="note">Migrated data: <b>0</b> distros and <b>312</b> fulfilled-count rows imported; all 5,390 migrated requests are currently <code>Open</code> (V1→V2 carried open requests only).</div></section>
+
+<section class="slide"><h2>open_request_counts()</h2><p class="subhead">Goods + social services combined, one entry per type</p><p>Runs a grouped count over both request tables and merges by type key:</p><pre><code><span class="cap">bam/services/metrics.py</span>for model in (Request, SocialServiceRequest):
+    rows = session.exec(
+        select(model.type, func.count())
+        .where(model.status == RequestStatus.OPEN)
+        .group_by(model.type)
+    ).all()
+    for type_key, count in rows:
+        totals[type_key] = totals.get(type_key, 0) + count</code></pre><ul><li>Result sorted by <code>count</code> descending, then <code>type</code> key: <code>sorted(totals.items(), key=lambda kv: (-kv[1], kv[0]))</code>.</li><li>Each entry gets a human <code>label</code> via <code>label_for(key)</code> (the trilingual catalog label).</li></ul></section>
+
+<section class="slide"><h2>UpdateWebsiteRequestData</h2><p class="subhead">The hourly cron job that writes the website JSON</p><p>Spec 5 lists one scheduled job — <code>UpdateWebsiteRequestData</code>, <b>Hourly</b>, "Publishes open request counts to website JSON." It is <code>update_website_request_data()</code>:</p><pre><code><span class="cap">bam/services/metrics.py</span>data = open_request_counts(session, now=now)
+target = Path(path or settings.website_data_path)
+target.write_text(
+    json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+    encoding="utf-8",
+)</code></pre><ul><li>Output path is <code>BAM_WEBSITE_DATA_PATH</code> (default <code>website_request_data.json</code>).</li><li><code>ensure_ascii=False</code> keeps the trilingual labels as UTF-8.</li><li>Triggered by <code>bam website-data</code> (cron <code>0 * * * *</code>) or <code>POST /jobs/website-data</code>.</li></ul></section>
+
+<section class="slide"><h2>The website JSON shape</h2><p class="subhead">generated_at + a ranked counts array</p><p>A stable object with an ISO-UTC timestamp and a descending-by-count list:</p><pre><code><span class="cap">website_request_data.json</span>{
+  "generated_at": "2026-07-06T14:00:00+00:00",
+  "counts": [
+    {
+      "type": "pots_pans",
+      "label": "Ollas y Sartenes / Pots &amp; Pans / 鍋碗瓢盆",
+      "count": 128
+    }
+  ]
+}</code></pre><ul><li><code>type</code> = canonical key, <code>label</code> = trilingual catalog label, <code>count</code> = open requests of that type.</li></ul><div class="note"><b>Note:</b> the timestamp and count values above are illustrative; only the field names and label string are verbatim from the repo.</div></section>
+
+<section class="slide"><h2>GET /metrics endpoints</h2><p class="subhead">bam/api/routes/metrics.py — spec 5 read surfaces</p><table><tr><th>Endpoint</th><th>Returns</th></tr><tr><td><code>GET /metrics/open-requests</code></td><td>Live <code>open_request_counts()</code> (the same JSON published hourly).</td></tr><tr><td><code>GET /metrics/fulfilled</code></td><td><code>list[FulfilledCountOut]</code>; optional <code>start</code>/<code>end</code> dates, inclusive.</td></tr></table><p><code>FulfilledCountOut</code> fields (schemas.py): <code>date</code>, <code>type</code>, <code>label</code>, <code>count</code>.</p><ul><li>Fulfilled rows are ordered by <code>date</code> then <code>request_type</code>; each <code>type</code> is expanded to its <code>label_for()</code> label in the response.</li></ul></section>
+
+<section class="slide divider"><p class="kicker">12</p><h1>The web operator console</h1><p class="subhead">No-build vanilla JS at /app/, mobile-first, six views over the same JSON API.</p></section>
+
+<section class="slide"><h2>Architecture: no build step</h2><p class="subhead">bam/web/ served straight from FastAPI</p><ul><li>Plain HTML/CSS/vanilla JS served from <code>bam/web/</code> at <code>/app/</code> (<code>/</code> redirects there). <b>No bundler, no CDN</b> — runs fully offline / self-hosted.</li><li>Talks to the same JSON API documented at <code>/docs</code>; the client is a thin same-origin <code>fetch</code> wrapper (<code>api.js</code>) that throws <code>ApiError</code> on any non-2xx.</li><li>Mobile-first: bottom nav on phones, left rail on wide screens — built for a volunteer's phone at a distribution.</li></ul><pre><code><span class="cap">bam/web/index.html — load order</span>&lt;script src="/app/api.js"&gt;&lt;/script&gt;
+&lt;script src="/app/app.js"&gt;&lt;/script&gt;
+&lt;script src="/app/views/checkin.js"&gt;&lt;/script&gt;
+...
+&lt;script&gt;BAM.start();&lt;/script&gt;</code></pre></section>
+
+<section class="slide"><h2>The BAM micro-framework</h2><p class="subhead">app.js — registerView, h, api, a hash router</p><ul><li><code>BAM.registerView(name, {title, icon, render})</code> — each view file self-registers on load; script order in <code>index.html</code> sets the nav order.</li><li><code>BAM.h(tag, attrs, ...children)</code> — a <code>createElement</code> helper (handles <code>class</code>, <code>on*</code> handlers, <code>dataset</code>, boolean attrs); no virtual DOM.</li><li><code>BAM.api</code> (from <code>api.js</code>) — one async method per endpoint, e.g. <code>api.lookup(phone)</code>, <code>api.fulfill(...)</code>, <code>api.openRequests()</code>.</li><li><code>BAM.start()</code> builds the nav, wires <code>hashchange</code>, and renders the current view; routes are hashes like <code>#checkin?phone=123</code>. Default view is <code>checkin</code>.</li></ul><p>Namespace init is idempotent, so <code>api.js</code> and <code>app.js</code> load in any order.</p></section>
+
+<section class="slide"><h2>The six views</h2><p class="subhead">README web-console table — spec ref + operator action</p><table><tr><th>View</th><th>Spec</th><th>Operator action</th></tr><tr><td>Check-in</td><td>6.3</td><td>Look up a household by phone <b>or name</b>, see open goods + social-service requests, check in, mark selected requests delivered.</td></tr><tr><td>Intake</td><td>6.1</td><td>Submit an assistance request form (multi-language; goods + social services).</td></tr><tr><td>Outreach</td><td>6.2 / A4–A6</td><td>Build a filtered outreach list, send the templated text blast, book appointments, record phone-outreach outcomes.</td></tr><tr><td>Distros</td><td>4 / 6.3</td><td>Create/list distributions and run the end-of-distro no-show pass (guarded confirm).</td></tr><tr><td>Dashboard</td><td>5</td><td>View live open-request counts by type; publish the website JSON.</td></tr><tr><td>Admin</td><td>5 / privacy</td><td>Run the cron jobs — expire, publish website data, scrub PII (destructive; two-step confirm).</td></tr></table></section>
+
+<section class="slide"><h2>Check-in: the reference view</h2><p class="subhead">views/checkin.js — the flow every other view copies</p><ul><li>Enter a phone → <code>api.lookup(phone)</code>; or a name → <code>api.searchByName(name)</code> (0 hits shows "not found → go to intake", 1 hit auto-loads, many hits render a picker).</li><li>Shows the household's <code>open_requests</code> (goods) and <code>open_social_service_requests</code> as two selectable checkbox lists, plus <code>delivered_request_types</code> ("Already received: …").</li><li><b>Check in</b> → <code>api.checkIn(id)</code> (resets missed count); <b>Mark selected delivered</b> → <code>api.fulfill({request_ids, social_service_request_ids})</code>.</li><li>After any mutation it re-fetches the household by id (<code>api.householdView(id)</code>) so the UI reflects server truth — even for phoneless households.</li></ul><div class="note"><b>Resilience:</b> a view crash is caught in <code>renderCurrent()</code> and shown as an error state rather than blanking the whole console.</div></section>
+
+<section class="slide divider"><p class="kicker">13</p><h1>Airtable migration</h1><p class="subhead">bam import-airtable: stdlib REST client, auditable snapshot, tolerant schema-driven mapping</p></section>
+
+<section class="slide"><h2>The migration command</h2><p class="subhead">bam import-airtable — one-shot import of the production V2 base</p><p>The importer migrates the real production base <code>appjIo54Z8MWrqhlI</code> — the base section 4 of the spec was documented from, so field names largely match verbatim.</p><ul><li>Pulls a raw JSON snapshot first, then imports from it (auditable, offline re-runnable).</li><li>Idempotent: every row carries its <code>airtable_id</code>; re-runs update in place.</li><li>Tolerant: tables located by name, fields read through variant-aware helpers, anything unmappable is <b>reported, never silently dropped</b>.</li></ul><pre><code><span class="cap">bam/cli.py — import-airtable subcommand args</span>--base-id       (default settings.airtable_base_id)
+--snapshot-dir  airtable-snapshot   # gitignored; contains PII
+--from-snapshot DIR                  # re-import offline</code></pre></section>
+
+<section class="slide"><h2>Stdlib REST client</h2><p class="subhead">bam/airtable.py — no third-party HTTP dependency</p><p><code>AirtableClient</code> covers exactly the two endpoints the import needs — the Metadata API for table schemas and the records API with pagination — using only <code>urllib</code>.</p><ul><li>Rate limiting: <code>_MIN_REQUEST_INTERVAL = 0.21</code> keeps it under Airtable's 5 rps per base.</li><li>Backoff: on HTTP <code>429</code> it sleeps <code>_RATE_LIMIT_PAUSE = 30.0</code> (Airtable's documented penalty) and retries, up to <code>_MAX_RETRIES = 5</code>.</li><li>Pagination: <code>records()</code> pages with <code>pageSize=100</code>, following the <code>offset</code> cursor until exhausted.</li></ul><div class="note">Needs a PAT with <code>schema.bases:read</code> and <code>data.records:read</code> scopes; a missing token raises <b>AirtableError</b> before any request.</div></section>
+
+<section class="slide"><h2>Auditable snapshot, offline re-runs</h2><p class="subhead">dump_snapshot + SnapshotSource</p><p>The client never feeds the importer directly. <code>dump_snapshot()</code> writes the base's <code>schema.json</code> plus one <code>&lt;table&gt;.json</code> per table, and <code>SnapshotSource</code> reads that directory back.</p><ul><li>Both <code>AirtableClient</code> and <code>SnapshotSource</code> satisfy the same <code>RecordSource</code> Protocol (<code>schema()</code> + <code>records(table)</code>).</li><li>The raw pull is the source of truth for a re-run, so a fixed import can replay against the exact bytes that were pulled.</li></ul><div class="note">The snapshot contains PII (names, phones, emails) — the directory is <b>gitignored</b> and kept local.</div></section>
+
+<section class="slide"><h2>Tolerant field mapping</h2><p class="subhead">schema-driven, variant-aware, data-preserving</p><ul><li>Tables are located by lowercased name against <code>TABLE_ALIASES</code> (e.g. <code>social service requests</code> or <code>social services</code>).</li><li><code>_first(fields, ...)</code> accepts naming variants; <code>_scalar()</code> unwraps single-valued Airtable lookup lists.</li><li>Request types normalize to catalog keys via <code>normalize_type</code>; an unresolved label keeps its <b>raw Airtable string</b> as the <code>type</code> and is listed in <code>unmatched_request_types</code>.</li><li>Effective open date: <code>request_opened_at</code> = <code>"Request Opened At"</code> then <code>"Legacy Date Submitted"</code> then the record's <code>createdTime</code>.</li><li>Requests linking to a missing household are skipped and reported in <code>orphaned_airtable_ids</code>.</li></ul></section>
+
+<section class="slide"><h2>Idempotency &amp; the shared-phone edge case</h2><p>Every table keys on <code>airtable_id</code> so re-runs update rather than duplicate — <code>Fulfilled Request Count</code> uses its natural <code>(date, type)</code> key instead.</p><ul><li>A household whose phone normalizes to a number an earlier record already claimed is imported <b>without a phone</b> (raw value kept in notes) and listed in <code>duplicate_phone_airtable_ids</code> — the spec's shared-phone edge case.</li><li>Invalid phones still hash the raw string: <code>phone_hash = hash_phone("not a phone")</code>, so dedup and post-scrub reconnection keep working.</li><li>Form submissions with a household link are marked processed (their requests already exist); unlinked ones stay pending for <code>bam process-intake</code>.</li></ul></section>
+
+<section class="slide divider"><p class="kicker">14</p><h1>Interpretation decisions</h1><p class="subhead">How 16 documented calls resolve spec ambiguity — plus two flagged for the team</p></section>
+
+<section class="slide"><h2>Mesh Requests: an off-spec table</h2><p class="subhead">decision 16 — mesh_internet with pipeline-status bucketing</p><p>The base has a <code>Mesh Requests</code> table (NYC Mesh internet installs) the spec never mentions. Rows import as <code>SocialServiceRequest</code> of type <code>mesh_internet</code>, its 17 pipeline statuses bucketed into the request lifecycle:</p><table><tr><th>Bucket</th><th>Statuses</th></tr><tr><td>Delivered</td><td>1 — <code>yay! mesh installed!</code></td></tr><tr><td>Timeout</td><td>5 — not interested, cannot install (no LOS / no roof access / other), NYCHA does not qualify</td></tr><tr><td>Open</td><td>everything in-flight (default)</td></tr></table><p>The raw pipeline status is preserved on the request notes (e.g. <code>[mesh status] Step 2 - LOS Confirmed</code>) so no detail is lost.</p></section>
+
+<section class="slide"><h2>Consequential calls (1)</h2><p class="subhead">decisions 2, 3, 5 from SPEC-MAPPING.md</p><ul><li><b>Request dedup (2):</b> a household never gets a second <code>Open</code> request of the same type; intake skips and reports it in <code>skipped_duplicate_types</code>.</li><li><b>Auto-expiration (3):</b> <code>Open</code> requests past their window (14d default, 30d pots &amp; pans, 14d all social services, measured from <code>request_opened_at</code>) go to <code>Timeout</code> — <b>except</b> a household with a current <code>Booked</code> appointment.</li><li><b>Missed appointments (5):</b> <code>missed_appointment_count</code> increments per no-show, resets to 0 on check-in; at <code>BAM_MAX_MISSED_APPOINTMENTS</code> (default 2) all open goods and social requests time out.</li></ul></section>
+
+<section class="slide"><h2>Consequential calls (2)</h2><p class="subhead">decisions 8, 10, 11, 12 from SPEC-MAPPING.md</p><ul><li><b>Date-bounded booking exemption (8):</b> the expiration exemption applies only while <code>appointment_date &gt;= today</code>, so a dangling <code>Booked</code> can't make requests (and PII) immortal.</li><li><b>Fulfilled counts include social services (10):</b> deliveries of both kinds increment <code>Fulfilled Request Count</code>, or a delivered service would vanish from metrics.</li><li><b>Local business dates (11):</b> timestamps are stored UTC, but count/processing/texted dates derive in <code>BAM_LOCAL_TIMEZONE</code> (default America/New_York).</li><li><b>Zip codes as strings (12):</b> spec types Zip Code as a number; stored as string so leading-zero zips survive, numeric input is coerced not rejected.</li></ul></section>
+
+<section class="slide"><h2>Open questions for the team</h2><p class="subhead">Two decisions that diverge from / resolve a contradiction in the spec text</p><div class="note"><b>1. Intake-row deletion (spec 6.1 step 6).</b> The spec says the system "deletes Intake Table row", but its own sequence diagram and the Households schema both link the submission to the household. We <b>keep</b> <code>FormSubmission</code> rows and scrub their PII after processing, preserving auditable history. Hard deletion would be a small change to <code>bam/services/privacy.py</code> — please confirm intent.</div><div class="note"><b>2. "No longer needs goods" (A6).</b> The outreach flowchart routes it to <code>marked 'timeout'</code>; the 6.4 table row A6 says <code>Mark complete</code>. We follow the <b>flowchart</b> (Timeout with a note) so fulfillment metrics aren't inflated by goods never handed out. A distinct "withdrawn/complete" status would be an enum addition in <code>bam/models.py</code> — please confirm.</div></section>
+
+<section class="slide divider"><p class="kicker">15</p><h1>Testing &amp; spec parity</h1><p class="subhead">159 tests, a CI matrix, adversarial review, and a section-by-section parity audit</p></section>
+
+<section class="slide"><h2>The test suite</h2><p class="subhead">159 tests, all passing</p><table><tr><th>Suite</th><th>Tests</th><th>Covers</th></tr><tr><td>test_outreach.py</td><td>30</td><td>6.2 blast, flowchart, A4–A6</td></tr><tr><td>test_validation.py</td><td>31</td><td>phone/email normalization (parametrized)</td></tr><tr><td>test_intake.py</td><td>22</td><td>6.1 submission → household → requests</td></tr><tr><td>test_checkin.py</td><td>22</td><td>6.3 check-in, fulfillment, no-shows</td></tr><tr><td>test_expiration_privacy.py</td><td>21</td><td>expiry windows + PII scrub</td></tr><tr><td>test_airtable_import.py</td><td>10</td><td>the migration</td></tr><tr><td>test_metrics.py</td><td>10</td><td>fulfilled/open counts, website data</td></tr><tr><td>test_api.py</td><td>9</td><td>HTTP surface end-to-end</td></tr><tr><td>test_web.py</td><td>4</td><td>console served, routes not shadowed</td></tr></table></section>
+
+<section class="slide"><h2>CI matrix</h2><p class="subhead">.github/workflows/ci.yml</p><p>CI runs on every push and pull request, across a two-version matrix with <code>fail-fast: false</code>.</p><pre><code><span class="cap">.github/workflows/ci.yml</span>strategy:
+  fail-fast: false
+  matrix:
+    python-version: ["3.11", "3.12"]
+steps:
+  - run: pip install -e ".[dev]"
+  - run: pytest</code></pre><ul><li>No build step, no CDN — pure Python over SQLite; offline and self-hostable.</li><li>~3,700 lines of Python in <code>bam/</code>.</li></ul></section>
+
+<section class="slide"><h2>How the migration is tested</h2><p class="subhead">test_airtable_import.py — no network involved</p><p>A <code>FakeSource</code> shaped exactly like Airtable payloads (<code>{"id", "createdTime", "fields"}</code>) drives 10 tests, so the importer is exercised against real-shaped data without a live base.</p><ul><li>Field mapping + phone normalization, <b>duplicate normalized phone</b> (second household loses its phone), orphan skip.</li><li>Type normalization: <code>Ollas y sartenes / Pots &amp; Pans</code> → <code>pots_pans</code>; unrecognized label kept raw and reported.</li><li>Mesh status buckets (Delivered / Timeout / Open) with BIN preserved on notes.</li><li><b>Idempotency</b>: a second import yields <code>created == 0</code>, <code>updated == 1</code>, and no duplicate rows.</li></ul></section>
+
+<section class="slide"><h2>Adversarial review &amp; parity audit</h2><p>The implementation went through a multi-agent adversarial review (independent agents hunting for correctness bugs and spec gaps) plus a section-by-section spec-parity audit against <code>bam-mutual-aid-spec.md</code>, with each numbered flow step and A1–A6 row required to map to at least one test.</p><ul><li><b>Randomized [REQUEST_URL] (6.2):</b> each blast message carries a unique <code>?r=&lt;token&gt;</code> so providers don't flag identical bodies as spam; <code>BAM_RANDOMIZE_REQUEST_URL=0</code> disables.</li><li><b>Delivered Request Types lookup:</b> check-in views now surface what a household already received, plus household notes.</li><li><b>Name-search check-in</b> (<code>GET /households/search?name=</code>) for recipients arriving without a phone.</li><li><b>Fulfilled read surface</b> (<code>GET /metrics/fulfilled?start=&amp;end=</code>) and all 12 social services in the console intake form.</li></ul></section>
+
+<section class="slide"><h2>What actually imported</h2><p class="subhead">ground-truth counts from the production V2 base</p><table><tr><th>Table</th><th>Rows</th></tr><tr><td>Households</td><td>1,252</td></tr><tr><td>Requests</td><td>5,390</td></tr><tr><td>Social-service rows</td><td>2,382</td></tr><tr><td>— of which NYC Mesh installs (mesh_internet)</td><td>1,478</td></tr><tr><td>— other social services</td><td>904</td></tr><tr><td>Fulfilled-count rows</td><td>312</td></tr><tr><td>Distros</td><td>0</td></tr><tr><td>Form submissions</td><td>0</td></tr></table><div class="note">All migrated requests are currently <code>Open</code>: the V1→V2 migration carried <b>open requests only</b>.</div></section>
+
+<section class="slide divider"><p class="kicker">16</p><h1>Configuration &amp; Ops</h1><p class="subhead">Env-driven settings, the bam CLI subcommands, and the hourly/daily cron mapping.</p></section>
+
+<section class="slide"><h2>Configuration: BAM_* / TWILIO_* env vars</h2><p class="subhead">bam/config.py — defaults encode the V2 spec's operational constants.</p><table><tr><th>Variable</th><th>Default</th></tr><tr><td><code>BAM_DATABASE_URL</code></td><td><code>sqlite:///bam.db</code></td></tr><tr><td><code>BAM_SMS_PROVIDER</code></td><td><code>console</code></td></tr><tr><td><code>TWILIO_ACCOUNT_SID</code></td><td>(empty)</td></tr><tr><td><code>TWILIO_AUTH_TOKEN</code></td><td>(empty)</td></tr><tr><td><code>TWILIO_FROM_NUMBER</code></td><td>(empty)</td></tr><tr><td><code>BAM_SMS_MAX_MESSAGES</code></td><td><code>240</code></td></tr><tr><td><code>BAM_SMS_BATCH_SIZE</code></td><td><code>30</code></td></tr><tr><td><code>BAM_SMS_BATCH_PAUSE_SECONDS</code></td><td><code>30</code></td></tr></table><p>All settings come from environment variables so the same code runs locally (SQLite + console SMS) and in production (Postgres + Twilio) unchanged.</p></section>
+
+<section class="slide"><h2>Configuration (continued)</h2><p class="subhead">Lifecycle windows, privacy retention, timezone, and outreach URL.</p><table><tr><th>Variable</th><th>Default</th></tr><tr><td><code>BAM_REQUEST_FORM_URL</code></td><td><code>https://forms.fillout.com/t/ivajQbwoWxus</code></td></tr><tr><td><code>BAM_RANDOMIZE_REQUEST_URL</code></td><td><code>1</code></td></tr><tr><td><code>BAM_DEFAULT_EXPIRY_DAYS</code></td><td><code>14</code></td></tr><tr><td><code>BAM_EXTENDED_EXPIRY_DAYS</code></td><td><code>30</code></td></tr><tr><td><code>BAM_MAX_MISSED_APPOINTMENTS</code></td><td><code>2</code></td></tr><tr><td><code>BAM_PII_RETENTION_DAYS</code></td><td><code>30</code></td></tr><tr><td><code>BAM_LOCAL_TIMEZONE</code></td><td><code>America/New_York</code></td></tr><tr><td><code>BAM_WEBSITE_DATA_PATH</code></td><td><code>website_request_data.json</code></td></tr></table><ul><li><code>14</code> / <code>30</code> = standard vs pots &amp; pans expiration window; <code>240</code> texts ≈ 60 appointments (spec 6.2).</li><li>Airtable migration reads <code>BAM_AIRTABLE_V2_TOKEN</code> (or <code>AIRTABLE_TOKEN</code>) and <code>BAM_AIRTABLE_V2_BASE_ID</code> (default <code>appjIo54Z8MWrqhlI</code>).</li></ul></section>
+
+<section class="slide"><h2>CLI: bam subcommands</h2><p class="subhead">Every non-serve command opens its own session and prints a JSON report to stdout.</p><table><tr><th>Command</th><th>Purpose</th></tr><tr><td><code>bam serve [--host --port --reload]</code></td><td>Run the API with uvicorn.</td></tr><tr><td><code>bam init-db</code></td><td>Create all database tables.</td></tr><tr><td><code>bam process-intake</code></td><td>Process all unprocessed form submissions (spec 6.1).</td></tr><tr><td><code>bam expire</code></td><td>Time out stale open requests (daily cron).</td></tr><tr><td><code>bam website-data</code></td><td>Write open request counts to the website JSON (hourly cron).</td></tr><tr><td><code>bam scrub-pii</code></td><td>Scrub expired PII (daily cron).</td></tr><tr><td><code>bam no-shows --date YYYY-MM-DD</code></td><td>End-of-distro no-show pass for that date (spec 6.3).</td></tr></table></section>
+
+<section class="slide"><h2>CLI: migration &amp; outreach</h2><p class="subhead">The two commands with the most flags: Airtable import and the text blast.</p><table><tr><th>Command</th><th>Purpose</th></tr><tr><td><code>bam import-airtable [--base-id --snapshot-dir --from-snapshot]</code></td><td>Migrate the production Airtable V2 base (snapshot + idempotent import).</td></tr><tr><td><code>bam blast --template "..." [...]</code></td><td>Build the outreach list and send the text blast (spec 6.2).</td></tr></table><ul><li><code>bam blast</code> flags: <code>--request-types</code>, <code>--languages</code>, <code>--limit</code>, <code>--max-messages</code>, <code>--exclude-texted-days</code>, <code>--exclude-attended-days</code>, <code>--dry-run</code>.</li><li>Templates support the spec placeholders <code>[FIRST_NAME]</code> and <code>[REQUEST_URL]</code>.</li></ul><div class="note"><b>--dry-run</b> previews via the console provider and persists nothing, so <code>Last Texted</code> recency filters stay intact for the real send. The import is idempotent (rows keyed by Airtable record id).</div></section>
+
+<section class="slide"><h2>Cron mapping</h2><p class="subhead">Mirrors the spec's section 5 jobs and the bam-automation hourly/daily crons.</p><pre><code><span class="cap">crontab</span>0 * * * *  bam website-data                # hourly: UpdateWebsiteRequestData
+0 6 * * *  bam expire &amp;&amp; bam scrub-pii     # daily: auto-expiration + PII scrub</code></pre><ul><li><b>Hourly:</b> <code>bam website-data</code> writes open request counts per type to the website JSON (spec 5).</li><li><b>Daily 06:00:</b> <code>bam expire</code> times out stale open requests, then <code>bam scrub-pii</code> anonymizes inactive households and clears PII from old processed submissions.</li><li>The spec's web-triggered <code>send_sms</code> is <code>POST /outreach/blast</code> (or <code>bam blast</code> from a shell) — not a cron job.</li></ul></section>
+
+<section class="slide"><h2>Run it yourself</h2><p class="subhead">The repo is public; two commands to a live console.</p><p>Repo: <code>github.com/bushwickayudamutua/bam-v2</code></p><pre><code><span class="cap">install &amp; run</span>pip install -e ".[dev]"
+bam serve
+# console: http://127.0.0.1:8000/app/
+# API docs: http://127.0.0.1:8000/docs</code></pre><ul><li>Runs fully offline: SQLite + console SMS provider, no build step, no CDN.</li><li>159 tests pass, CI green across Python 3.11 and 3.12.</li></ul><div class="note"><b>Two open questions need the team:</b> whether intake rows should be hard-deleted (spec 6.1 step 6) and whether A6 "no longer needs goods" should mark complete vs Timeout. Both are flagged in <code>SPEC-MAPPING.md</code> for the BAM team to confirm.</div></section>
+</div>
+<div id="title-hud">BAM Mutual Aid V2</div>
+<div id="hud"></div>
+<div id="overview" aria-hidden="true"></div>
+<script>
+(function(){
+  "use strict";
+  var slides = [].slice.call(document.querySelectorAll('.slide'));
+  var i = 0;
+  var bar = document.getElementById('bar');
+  var hud = document.getElementById('hud');
+  var overview = document.getElementById('overview');
+  var ovOn = false;
+
+  function clamp(n){ return Math.max(0, Math.min(slides.length - 1, n)); }
+
+  function show(n){
+    slides[i].classList.remove('active');
+    i = clamp(n);
+    slides[i].classList.add('active');
+    slides[i].scrollTop = 0;
+    var pct = slides.length > 1 ? (i / (slides.length - 1)) * 100 : 100;
+    bar.style.width = pct + '%';
+    hud.textContent = (i + 1) + ' / ' + slides.length;
+    if (location.hash !== '#' + (i + 1)) history.replaceState(null, '', '#' + (i + 1));
+  }
+  function next(){ show(i + 1); }
+  function prev(){ show(i - 1); }
+
+  function buildOverview(){
+    overview.innerHTML = '';
+    slides.forEach(function(s, idx){
+      var head = s.querySelector('h1, h2');
+      var t = document.createElement('div');
+      t.className = 'thumb' + (s.classList.contains('divider') ? ' div' : '');
+      t.innerHTML = '<b>' + (idx + 1) + '</b>';
+      t.appendChild(document.createTextNode(head ? head.textContent : ''));
+      t.onclick = function(){ toggleOverview(false); show(idx); };
+      overview.appendChild(t);
+    });
+  }
+  function toggleOverview(on){
+    ovOn = (on === undefined) ? !ovOn : on;
+    overview.classList.toggle('on', ovOn);
+  }
+
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown'){ e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp'){ e.preventDefault(); prev(); }
+    else if (e.key === 'Home'){ e.preventDefault(); show(0); }
+    else if (e.key === 'End'){ e.preventDefault(); show(slides.length - 1); }
+    else if (e.key === 'o' || e.key === 'O'){ toggleOverview(); }
+    else if (e.key === 'Escape'){ toggleOverview(false); }
+  });
+  document.getElementById('deck').addEventListener('click', function(e){
+    if (e.target.closest('a, button, pre, table')) return;
+    next();
+  });
+
+  buildOverview();
+  var start = parseInt((location.hash || '').replace('#', ''), 10);
+  slides[0].classList.add('active');
+  show(isNaN(start) ? 0 : clamp(start - 1));
+})();
+</script>
+</body>
+</html>

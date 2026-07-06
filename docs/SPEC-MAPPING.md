@@ -204,8 +204,9 @@ exists yet).
 ### 16. The catalog mirrors production, and Mesh Requests are imported
 
 The request-type catalog (`bam/request_types.py`) carries the production
-base's select options verbatim — 42 goods types (individual furniture and
-bed-size types, not the spec's summarized list) and 11 social services —
+base's select options verbatim — 41 goods types (individual furniture and
+bed-size types, not the spec's summarized list) and 13 social services
+(including both low-cost internet and the Mesh install pipeline) —
 with the spec-only extras kept in `SPEC_COMPAT` and older form wordings in
 `LEGACY_ALIASES`. The base also has a **Mesh Requests** table (NYC Mesh
 internet installs) that the spec doesn't mention: those import as
