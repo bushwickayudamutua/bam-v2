@@ -94,5 +94,50 @@ class Settings:
         )
     )
 
+    # Address geocoding (clean-record parity). The Google + NYC Planning
+    # Labs geocoder activates when a Google Maps key is set; otherwise a
+    # passthrough geocoder just formats the address (no BIN/plus_code).
+    google_maps_api_key: str = field(
+        default_factory=lambda: os.environ.get("BAM_GOOGLE_MAPS_API_KEY", "")
+    )
+    geocoder_provider: str = field(
+        default_factory=lambda: os.environ.get("BAM_GEOCODER", "auto")
+    )
+
+    # Mailjet email-list sync (UpdateMailjetLists parity).
+    mailjet_api_key: str = field(
+        default_factory=lambda: os.environ.get("BAM_MAILJET_API_KEY", "")
+    )
+    mailjet_api_secret: str = field(
+        default_factory=lambda: os.environ.get("BAM_MAILJET_API_SECRET", "")
+    )
+    mailjet_list_id: str = field(
+        default_factory=lambda: os.environ.get("BAM_MAILJET_LIST_ID", "")
+    )
+
+    # Snapshot backup (SnapshotAirtableViews parity). S3 when configured,
+    # otherwise a local directory.
+    snapshot_dir: str = field(
+        default_factory=lambda: os.environ.get("BAM_SNAPSHOT_DIR", "snapshots")
+    )
+    s3_bucket: str = field(default_factory=lambda: os.environ.get("BAM_S3_BUCKET", ""))
+    s3_endpoint_url: str = field(
+        default_factory=lambda: os.environ.get("BAM_S3_ENDPOINT_URL", "")
+    )
+    s3_access_key_id: str = field(
+        default_factory=lambda: os.environ.get("BAM_S3_ACCESS_KEY_ID", "")
+    )
+    s3_secret_access_key: str = field(
+        default_factory=lambda: os.environ.get("BAM_S3_SECRET_ACCESS_KEY", "")
+    )
+
+    # count-closed-requests parity: bucket delivered/timed-out requests into
+    # Fulfilled Request Count and then delete them (prod behaviour). Off by
+    # default because our default model keeps closed requests + scrubs PII.
+    delete_after_count: bool = field(
+        default_factory=lambda: os.environ.get("BAM_DELETE_AFTER_COUNT", "0")
+        not in ("0", "false", "no", "")
+    )
+
 
 settings = Settings()

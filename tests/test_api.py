@@ -394,3 +394,31 @@ def test_fulfilled_metrics_endpoint(client):
     on_date = rows[0]["date"]
     assert client.get("/metrics/fulfilled", params={"start": on_date, "end": on_date}).json() == rows
     assert client.get("/metrics/fulfilled", params={"start": "2099-01-01"}).json() == []
+
+
+def test_automation_endpoints(client):
+    """Smoke the parity automation routes end-to-end."""
+    # Two households sharing a phone hash isn't creatable via the API, so
+    # exercise merge with two distinct households.
+    a = client.post("/intake/submissions", json={"phone_number": "718-555-1001", "name": "A", "request_types": ["soap"]}).json()
+    b = client.post("/intake/submissions", json={"phone_number": "718-555-1002", "name": "B", "request_types": ["pads"]}).json()
+
+    merged = client.post("/households/merge", json={"survivor_id": a["household_id"], "other_ids": [b["household_id"]]})
+    assert merged.status_code == 200
+    assert merged.json()["moved_requests"] == 1
+
+    # Survivor now has both requests; lookup reflects it.
+    view = client.get("/households/lookup", params={"phone": "718-555-1001"}).json()
+    assert len(view["open_requests"]) == 2
+
+    assert client.post("/requests/consolidate", json={}).status_code == 200
+    assert client.post("/jobs/dedupe-households").status_code == 200
+    assert client.post("/jobs/count-closed", json={"delete": False}).status_code == 200
+    assert client.post("/jobs/mailjet-sync").json()["dry_run"] is True
+    assert client.get("/metrics/analytics").status_code == 200
+
+    # Hard delete: survivor gone, its requests gone.
+    resp = client.request("DELETE", f"/households/{a['household_id']}")
+    assert resp.status_code == 200 and resp.json()["requests"] == 2
+    assert client.get("/households/lookup", params={"phone": "718-555-1001"}).status_code == 404
+    assert client.request("DELETE", "/households/999999").status_code == 404

@@ -33,8 +33,14 @@ from bam.schemas import ScrubReport
 from bam.validation import hash_phone
 
 _CLOSED_STATUSES = (RequestStatus.DELIVERED, RequestStatus.TIMEOUT)
-_REQUEST_PII_FIELDS = ("street_address", "city_state", "zip_code", "geocode", "address", "notes")
-_SOCIAL_REQUEST_PII_FIELDS = ("street_address", "city_state", "zip_code", "address", "notes")
+_REQUEST_PII_FIELDS = (
+    "street_address", "city_state", "zip_code", "geocode", "address", "notes",
+    "bin", "address_accuracy",
+)
+_SOCIAL_REQUEST_PII_FIELDS = (
+    "street_address", "city_state", "zip_code", "address", "notes",
+    "geocode", "bin", "address_accuracy",
+)
 _SUBMISSION_PII_FIELDS = (
     "name",
     "phone_number",

@@ -118,8 +118,10 @@ class Request(SQLModel, table=True):
     street_address: Optional[str] = None
     city_state: Optional[str] = None
     zip_code: Optional[str] = None
-    geocode: Optional[str] = None
+    geocode: Optional[str] = None  # "plus_code" / Open Location Code
     address: Optional[str] = None
+    bin: Optional[str] = None  # NYC Building Identification Number
+    address_accuracy: Optional[str] = None  # Apartment/Building/No result/...
 
     airtable_id: Optional[str] = Field(default=None, index=True, unique=True)
     created_at: datetime = Field(default_factory=utcnow)
@@ -148,6 +150,12 @@ class SocialServiceRequest(SQLModel, table=True):
     city_state: Optional[str] = None
     zip_code: Optional[str] = None
     address: Optional[str] = None
+    geocode: Optional[str] = None
+    bin: Optional[str] = None  # NYC Building Identification Number (Mesh)
+    address_accuracy: Optional[str] = None
+    # Raw NYC-Mesh pipeline status (17 stages) preserved for consolidation
+    # ranking; the coarse RequestStatus above is derived from it.
+    mesh_status: Optional[str] = None
 
     request_opened_at: datetime = Field(default_factory=utcnow)
     status_last_updated_at: datetime = Field(default_factory=utcnow)

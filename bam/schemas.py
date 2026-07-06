@@ -180,6 +180,47 @@ class DistroOut(BaseModel):
     notes: str | None = None
 
 
+class MergeReport(BaseModel):
+    survivor_id: int
+    merged_ids: list[int] = []
+    moved_requests: int = 0
+
+
+class ConsolidateReport(BaseModel):
+    requests_removed: int = 0
+    social_removed: int = 0
+    mesh_removed: int = 0
+
+
+class DedupeReport(BaseModel):
+    clusters_merged: int = 0
+    households_removed: int = 0
+
+
+class CountClosedReport(BaseModel):
+    counted: int = 0
+    deleted: int = 0
+
+
+class MailjetReport(BaseModel):
+    eligible: int = 0
+    synced: int = 0
+    dry_run: bool = False
+
+
+class SnapshotReport(BaseModel):
+    location: str
+    counts: dict[str, int] = {}
+
+
+class AnalyticsReport(BaseModel):
+    total_fulfilled: int = 0
+    total_open: int = 0
+    fulfilled_by_type: list[dict] = []
+    fulfilled_by_date: list[dict] = []
+    open_by_type: list[dict] = []
+
+
 class TableImportCounts(BaseModel):
     created: int = 0
     updated: int = 0

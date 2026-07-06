@@ -15,7 +15,16 @@ from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from bam.api.routes import catalog, checkin, distros, intake, jobs, metrics, outreach
+from bam.api.routes import (
+    automations,
+    catalog,
+    checkin,
+    distros,
+    intake,
+    jobs,
+    metrics,
+    outreach,
+)
 from bam.db import init_db
 
 
@@ -36,6 +45,7 @@ def create_app() -> FastAPI:
     app.include_router(jobs.router)
     app.include_router(metrics.router)
     app.include_router(catalog.router)
+    app.include_router(automations.router)
 
     # Serve the operator console. Mounted LAST so it never shadows API routes;
     # "/" redirects into the mounted app.

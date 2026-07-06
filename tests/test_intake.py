@@ -296,7 +296,8 @@ def test_social_service_requests_created_with_internet_fields(
     assert result.unknown_types == []
 
     rows = session.exec(select(SocialServiceRequest)).all()
-    assert sorted(r.type for r in rows) == ["housing", "internet"]
+    # Low-cost internet routes into the NYC-Mesh pipeline (mesh_internet).
+    assert sorted(r.type for r in rows) == ["housing", "mesh_internet"]
     for row in rows:
         assert row.status == RequestStatus.OPEN
         assert row.internet_access == ["Mobile data only"]
@@ -322,7 +323,8 @@ def test_social_service_dedup_skips_open_duplicate(session: Session) -> None:
         ),
         now=FIXED_NOW,
     )
-    assert result.skipped_duplicate_types == ["internet"]
+    # "internet" routes to mesh_internet, which is the already-open dup.
+    assert result.skipped_duplicate_types == ["mesh_internet"]
     assert len(result.created_social_service_request_ids) == 1
     assert len(session.exec(select(SocialServiceRequest)).all()) == 2
 

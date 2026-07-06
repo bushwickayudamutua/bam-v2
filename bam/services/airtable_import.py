@@ -470,6 +470,11 @@ def _import_mesh_requests(
         zip_code = _scalar(_first(fields, "Zip Code"))
         obj.zip_code = str(zip_code) if zip_code is not None else None
         obj.address = _scalar(_first(fields, "Address"))
+        # Preserve the raw mesh pipeline status + BIN + accuracy so
+        # consolidation can rank statuses and pick the best address bundle.
+        obj.mesh_status = status_raw or None
+        obj.bin = str(int(bin_number)) if isinstance(bin_number, (int, float)) else None
+        obj.address_accuracy = str(accuracy) if accuracy else None
         obj.updated_at = now
 
         session.add(obj)

@@ -88,6 +88,52 @@ def cmd_no_shows(args: argparse.Namespace) -> None:
     _print_json(report.model_dump(mode="json"))
 
 
+def _run_job(fn) -> None:
+    """Open a session, run a parity job, print its JSON report."""
+    from pydantic import BaseModel
+
+    init_db()
+    with Session(get_engine()) as session:
+        report = fn(session)
+    _print_json(report.model_dump(mode="json") if isinstance(report, BaseModel) else report)
+
+
+def cmd_consolidate(args: argparse.Namespace) -> None:
+    from bam.services.consolidate import consolidate_requests
+
+    _run_job(lambda s: consolidate_requests(s, household_id=args.household_id))
+
+
+def cmd_dedupe(args: argparse.Namespace) -> None:
+    from bam.services.dedupe import dedupe_households
+
+    _run_job(dedupe_households)
+
+
+def cmd_count_closed(args: argparse.Namespace) -> None:
+    from bam.services.count_closed import count_closed_requests
+
+    _run_job(lambda s: count_closed_requests(s, delete=args.delete or None))
+
+
+def cmd_mailjet(args: argparse.Namespace) -> None:
+    from bam.services.mailjet import sync_mailjet_lists
+
+    _run_job(sync_mailjet_lists)
+
+
+def cmd_snapshot(args: argparse.Namespace) -> None:
+    from bam.services.snapshot import snapshot_data
+
+    _run_job(snapshot_data)
+
+
+def cmd_analyze(args: argparse.Namespace) -> None:
+    from bam.services.analytics import analyze_fulfilled_requests
+
+    _run_job(analyze_fulfilled_requests)
+
+
 def cmd_import_airtable(args: argparse.Namespace) -> None:
     """Migrate the production Airtable V2 base into the local database.
 
@@ -195,6 +241,44 @@ def build_parser() -> argparse.ArgumentParser:
         "--date", type=_parse_date, required=True, help="Distribution date (YYYY-MM-DD)."
     )
     no_shows.set_defaults(func=cmd_no_shows)
+
+    # Parity automations / maintenance jobs.
+    consolidate = subparsers.add_parser(
+        "consolidate", help="Consolidate duplicate requests (consolidate-requests.js)."
+    )
+    consolidate.add_argument(
+        "--household-id", type=int, default=None, help="Limit to one household."
+    )
+    consolidate.set_defaults(func=cmd_consolidate)
+
+    dedupe = subparsers.add_parser(
+        "dedupe-households", help="Merge same-phone duplicate households (DedupeAirtableViews)."
+    )
+    dedupe.set_defaults(func=cmd_dedupe)
+
+    count_closed = subparsers.add_parser(
+        "count-closed",
+        help="Tally delivered requests into fulfilled counts (count-closed-requests.js).",
+    )
+    count_closed.add_argument(
+        "--delete", action="store_true", help="Delete the requests after counting (prod behaviour)."
+    )
+    count_closed.set_defaults(func=cmd_count_closed)
+
+    mailjet = subparsers.add_parser(
+        "mailjet-sync", help="Sync email contacts to Mailjet (UpdateMailjetLists; daily)."
+    )
+    mailjet.set_defaults(func=cmd_mailjet)
+
+    snapshot = subparsers.add_parser(
+        "snapshot", help="Write a full data snapshot to S3/disk (SnapshotAirtableViews; daily)."
+    )
+    snapshot.set_defaults(func=cmd_snapshot)
+
+    analyze = subparsers.add_parser(
+        "analyze", help="Fulfilled-vs-open analytics (analyze_fulfilled_requests)."
+    )
+    analyze.set_defaults(func=cmd_analyze)
 
     import_airtable = subparsers.add_parser(
         "import-airtable",

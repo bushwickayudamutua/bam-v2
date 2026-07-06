@@ -26,6 +26,7 @@ from bam.models import (
 )
 from bam.request_types import BY_KEY, is_social_service, normalize_type
 from bam.schemas import FormSubmissionIn, IntakeResult
+from bam.services.geocoding import Geocoder, get_geocoder
 from bam.validation import hash_phone, validate_email_address, validate_phone
 
 #: Types whose requests get the form's bed details appended to their notes.
@@ -34,6 +35,10 @@ BED_DETAIL_TYPES = tuple(
     for key in BY_KEY
     if "mattress" in key or "bed" in key or key in ("crib", "furniture")
 )
+
+#: Social-service keys that route to the NYC-Mesh install pipeline (parity
+#: with create-requests.js routing low-cost internet to a Mesh Request).
+MESH_KEYS = ("internet", "mesh_internet")
 
 
 def submit_form(
@@ -67,7 +72,10 @@ def submit_form(
 
 
 def process_submission(
-    session: Session, submission_id: int, now: datetime | None = None
+    session: Session,
+    submission_id: int,
+    now: datetime | None = None,
+    geocoder: Geocoder | None = None,
 ) -> IntakeResult:
     """Process one stored submission (spec 6.1 steps 3-7).
 
@@ -185,6 +193,27 @@ def process_submission(
     address_parts = [submission.street_address, submission.city_state, submission.zip_code]
     address = ", ".join(part for part in address_parts if part) or None
 
+    # Geocode the address once (clean-record parity: cleaned address +
+    # accuracy + BIN + plus_code). Passthrough geocoder when unconfigured.
+    geo = None
+    if any(address_parts):
+        if geocoder is None:
+            from bam.config import settings
+
+            geocoder = get_geocoder(settings)
+        geo = geocoder.geocode(
+            submission.street_address, submission.city_state, submission.zip_code
+        )
+        if geo.cleaned_address:
+            address = geo.cleaned_address
+
+    def _apply_geo(row) -> None:
+        if geo is None:
+            return
+        row.geocode = geo.plus_code
+        row.bin = geo.bin
+        row.address_accuracy = geo.address_accuracy
+
     goods_keys: list[str] = []
     for value in [
         *submission.request_types,
@@ -218,6 +247,7 @@ def process_submission(
             request.city_state = submission.city_state
             request.zip_code = submission.zip_code
             request.address = address
+            _apply_geo(request)
             # Keep item-level detail (Sofa, Dresser, ...) with the request so
             # the furniture team sees what was asked for, not just the type.
             if key == "furniture" and submission.furniture_items:
@@ -236,6 +266,10 @@ def process_submission(
         if key is None or not is_social_service(key):
             _append_unique(result.unknown_types, value)
             continue
+        # Low-cost internet routes into the NYC-Mesh install pipeline
+        # (create-requests.js), stored as a mesh_internet request.
+        if key in MESH_KEYS:
+            key = "mesh_internet"
         if key in seen_social:
             continue
         seen_social.append(key)
@@ -257,6 +291,9 @@ def process_submission(
             created_at=now,
             updated_at=now,
         )
+        if key == "mesh_internet":
+            social_request.mesh_status = "Open"
+            _apply_geo(social_request)
         session.add(social_request)
         session.flush()
         result.created_social_service_request_ids.append(social_request.id)
@@ -267,22 +304,30 @@ def process_submission(
     return result
 
 
-def process_pending(session: Session, now: datetime | None = None) -> list[IntakeResult]:
+def process_pending(
+    session: Session, now: datetime | None = None, geocoder: Geocoder | None = None
+) -> list[IntakeResult]:
     """Process every submission with ``processed_at IS NULL`` (spec 6.1)."""
     pending_ids = session.exec(
         select(FormSubmission.id)
         .where(col(FormSubmission.processed_at).is_(None))
         .order_by(col(FormSubmission.id))
     ).all()
-    return [process_submission(session, submission_id, now=now) for submission_id in pending_ids]
+    return [
+        process_submission(session, submission_id, now=now, geocoder=geocoder)
+        for submission_id in pending_ids
+    ]
 
 
 def intake_and_process(
-    session: Session, payload: FormSubmissionIn, now: datetime | None = None
+    session: Session,
+    payload: FormSubmissionIn,
+    now: datetime | None = None,
+    geocoder: Geocoder | None = None,
 ) -> IntakeResult:
     """Convenience: store and immediately process a single submission."""
     submission = submit_form(session, payload, now=now)
-    return process_submission(session, submission.id, now=now)
+    return process_submission(session, submission.id, now=now, geocoder=geocoder)
 
 
 def _has_open(

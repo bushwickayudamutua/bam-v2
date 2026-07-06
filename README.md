@@ -176,8 +176,16 @@ The spec's web-triggered `send_sms` function is `POST /outreach/blast` (or
 | `bam no-shows --date YYYY-MM-DD` | End-of-distro no-show pass for that date (spec 6.3). |
 | `bam import-airtable [--base-id --snapshot-dir --from-snapshot]` | Migrate the production Airtable V2 base (snapshot + idempotent import). |
 | `bam blast --template "..." [--request-types --languages --limit --max-messages --exclude-texted-days --exclude-attended-days --dry-run]` | Build the outreach list and send the text blast (spec 6.2); `--dry-run` previews via the console provider and persists nothing. |
+| `bam consolidate [--household-id]` | Consolidate duplicate requests per household. |
+| `bam dedupe-households` | Merge same-phone-hash duplicate households. |
+| `bam count-closed [--delete]` | Tally delivered requests into fulfilled counts (optionally deleting them). |
+| `bam mailjet-sync` | Sync valid-email contacts to Mailjet (dry-run without keys). |
+| `bam snapshot` | Full JSON data snapshot to S3 or a local directory. |
+| `bam analyze` | Fulfilled-vs-open analytics. |
 
-Every non-serve command prints a JSON report to stdout.
+Every non-serve command prints a JSON report to stdout. These last six mirror
+the production `bam-automation` V2 automations and maintenance crons — see
+[docs/AUTOMATION-COVERAGE.md](docs/AUTOMATION-COVERAGE.md) for the full mapping.
 
 ## Project layout
 
