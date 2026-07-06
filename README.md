@@ -218,3 +218,15 @@ row deletion in 6.1 step 6, and the A6 "no longer needs goods" row). Every
 interpretation this implementation makes — and the two we flag as open
 questions for the BAM team — is documented in
 [docs/SPEC-MAPPING.md](docs/SPEC-MAPPING.md).
+
+## Local-first branch (`crdt-keyhive`)
+
+The branch [`crdt-keyhive`](../../tree/crdt-keyhive) carries
+[`local-first/`](local-first/): the same V2 domain running on **Automerge
+CRDT documents with per-peer access control** (the Keyhive-track
+`automerge-repo@subduction` build, synced through a
+[Subduction](https://github.com/inkandswitch/subduction) relay). Each
+volunteer device holds a replica that works fully offline; access is a
+roster of Ed25519 device keys with roles and revocation, and SMS becomes a
+shared outbox any gateway device can drain. See `local-first/README.md` for
+the verified trust model and quickstart.

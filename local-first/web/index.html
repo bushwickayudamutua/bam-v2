@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#b4531f" />
+    <title>BAM Operator Console — local-first</title>
+    <link rel="stylesheet" href="/console/styles.css" />
+  </head>
+  <body>
+    <!-- Same shell as bam/web/index.html; views render into #app-main. -->
+    <header class="app-bar">
+      <span class="app-bar__logo" aria-hidden="true">🤝</span>
+      <h1 class="app-bar__title">BAM Console (local-first)</h1>
+      <span class="app-bar__view" id="app-bar-view" aria-live="polite"></span>
+    </header>
+
+    <div class="app-layout">
+      <nav class="nav" id="app-nav" aria-label="Primary"></nav>
+      <main id="app-main" aria-live="polite"></main>
+    </div>
+
+    <!-- First-run / loading UI mounts here; removed once the console boots. -->
+    <div id="boot-root"></div>
+
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>
