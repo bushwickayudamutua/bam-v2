@@ -14,3 +14,7 @@ website_request_data.json
 airtable-snapshot/
 .env
 .DS_Store
+node_modules/
+local-first/dist/
+local-first/.bam-lf/
+*.identity.key
