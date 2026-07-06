@@ -45,6 +45,14 @@ export interface OpenStoreOptions {
   deviceName?: string;
   /** Extra peer ids the policy always allows (e.g. a relay's key). */
   alwaysAllow?: string[];
+  /**
+   * Trust-on-first-use: connect to the configured endpoints without knowing
+   * the relay's peer id in advance (needed for relays whose key isn't
+   * published, like the Ink & Switch experiment relay). See
+   * `RosterPolicyOptions.trustAll` for the exact semantics and caveats;
+   * capture the learned id via `learnedRelayPeers` and pin it afterwards.
+   */
+  trustDialedRelays?: boolean;
 }
 
 export interface BamStore {
@@ -80,6 +88,7 @@ export async function openStore(opts: OpenStoreOptions): Promise<BamStore> {
   const box: { roster?: DocHandle<RosterDoc> } = {};
   const policy = rosterPolicy(() => box.roster?.doc(), {
     alwaysAllow: [peerId, ...(opts.alwaysAllow ?? [])],
+    trustAll: opts.trustDialedRelays,
   });
 
   const repo = new Repo({
@@ -118,4 +127,15 @@ export async function openStore(opts: OpenStoreOptions): Promise<BamStore> {
   }
 
   return { repo, peerId, roster, base };
+}
+
+/**
+ * The relay peer ids this store is currently connected to (excluding our
+ * own key). After a trust-on-first-use connect, pin these — pass them as
+ * `alwaysAllow` (CLI: saved to state.json as `relayPeer`) so future
+ * sessions verify the relay instead of trusting blindly.
+ */
+export async function learnedRelayPeers(store: BamStore): Promise<string[]> {
+  const ids = await store.repo.connectedSubductionPeerIds();
+  return ids.filter((id) => id !== store.peerId);
 }

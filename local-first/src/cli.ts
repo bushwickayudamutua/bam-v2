@@ -20,6 +20,12 @@
  *   jobs website-data [--out f]    hourly cron: open request counts as JSON
  *   sync [--endpoint <wss://…>]    connect to a Subduction relay and stay up
  *
+ * Relay trust: pass --relay-peer <hex> when you know the relay's key, or
+ * --trust-relay to learn it on the first connect and pin it in state.json
+ * (needed for relays whose key isn't published, e.g. the Ink & Switch
+ * experiment relay at wss://sync.subduction.inkandswitch.com — the default
+ * endpoint; not yet publicly resolvable as of 2026-07-06).
+ *
  * `jobs` and `outbox drain` connect using the endpoint/relay saved by
  * `org join`/`sync` (if any) and linger briefly so mutations replicate —
  * these are the cron automations, run on a dedicated enrolled device.
@@ -35,7 +41,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { MemorySigner } from "@automerge/automerge-subduction";
 import { NodeFSStorageAdapter } from "@automerge/automerge-repo-storage-nodefs";
-import { DEFAULT_SYNC_ENDPOINT, openStore } from "./store.ts";
+import { DEFAULT_SYNC_ENDPOINT, learnedRelayPeers, openStore } from "./store.ts";
 import type { BamStore } from "./store.ts";
 import { addMember, revokeMember } from "./roster.ts";
 import type { Role } from "./schema.ts";
@@ -110,7 +116,11 @@ async function saveState(dataDir: string, state: CliState): Promise<void> {
   await writeFile(join(dataDir, "state.json"), JSON.stringify(state, null, 2) + "\n");
 }
 
-async function open(dataDir: string, endpoints: string[] = []): Promise<BamStore> {
+async function open(
+  dataDir: string,
+  endpoints: string[] = [],
+  trustDialedRelays = false
+): Promise<BamStore> {
   const signer = await loadSigner(dataDir);
   const state = await loadState(dataDir);
   if (!state.rosterUrl) {
@@ -123,6 +133,7 @@ async function open(dataDir: string, endpoints: string[] = []): Promise<BamStore
     endpoints,
     rosterUrl: state.rosterUrl,
     alwaysAllow: state.relayPeer ? [state.relayPeer] : [],
+    trustDialedRelays,
   });
 }
 
@@ -185,7 +196,13 @@ async function main(): Promise<void> {
         const rosterUrl = str(flags, "roster");
         if (!rosterUrl) throw new Error("org join requires --roster <automerge:url>");
         const endpoint = str(flags, "endpoint") ?? DEFAULT_SYNC_ENDPOINT;
-        const relayPeer = str(flags, "relay-peer");
+        let relayPeer = str(flags, "relay-peer");
+        const trustRelay = !!flags["trust-relay"];
+        if (!relayPeer && !trustRelay) {
+          throw new Error(
+            "org join needs --relay-peer <hex>, or --trust-relay to learn+pin the relay's key on first use"
+          );
+        }
         // Joining needs the network: the roster/base docs live elsewhere.
         const store = await openStore({
           signer,
@@ -193,9 +210,16 @@ async function main(): Promise<void> {
           endpoints: [endpoint],
           rosterUrl,
           alwaysAllow: relayPeer ? [relayPeer] : [],
+          trustDialedRelays: trustRelay && !relayPeer,
         });
+        if (!relayPeer && trustRelay) {
+          // TOFU: pin the learned relay key for all future (verified) runs.
+          const learned = await learnedRelayPeers(store);
+          relayPeer = learned[0];
+          console.error(`trust-on-first-use: pinned relay peer ${relayPeer ?? "(none learned)"}`);
+        }
         await saveState(dataDir, { rosterUrl, endpoint, relayPeer });
-        print({ joined: store.roster.doc()?.org, rosterUrl, peerId: store.peerId });
+        print({ joined: store.roster.doc()?.org, rosterUrl, peerId: store.peerId, relayPeer });
         await new Promise((r) => setTimeout(r, 300));
         return;
       }
@@ -321,19 +345,34 @@ async function main(): Promise<void> {
       const state = await loadState(dataDir);
       const endpoint = str(flags, "endpoint") ?? state.endpoint ?? DEFAULT_SYNC_ENDPOINT;
       const relayPeer = str(flags, "relay-peer") ?? state.relayPeer;
+      const trustRelay = !!flags["trust-relay"] && !relayPeer;
       if (relayPeer && relayPeer !== state.relayPeer) {
         await saveState(dataDir, { ...state, endpoint, relayPeer });
       }
-      const store = await open(dataDir, [endpoint]);
+      const store = await open(dataDir, [endpoint], trustRelay);
       console.log(`syncing via ${endpoint} as ${store.peerId}`);
+      if (trustRelay) {
+        console.log("trust-on-first-use: will pin the relay's key once connected");
+      }
       console.log("Ctrl-C to stop.");
-      const status = (): void => {
+      let pinned = !trustRelay;
+      const status = async (): Promise<void> => {
         console.log(
           `[${new Date().toISOString()}] connected=${store.repo.isSubductionConnected()}`
         );
+        if (!pinned && store.repo.isSubductionConnected()) {
+          const learned = await learnedRelayPeers(store);
+          if (learned.length) {
+            pinned = true;
+            await saveState(dataDir, { ...state, endpoint, relayPeer: learned[0] });
+            console.log(
+              `pinned relay peer ${learned[0]} — future runs verify it (state.json)`
+            );
+          }
+        }
       };
-      setTimeout(status, 3000);
-      setInterval(status, 30000);
+      setTimeout(() => void status(), 3000);
+      setInterval(() => void status(), 30000);
       await new Promise(() => {}); // run until interrupted
       return;
     }

@@ -10,7 +10,7 @@
 
 import { WebCryptoSigner } from "@automerge/automerge-subduction";
 import { IndexedDBStorageAdapter } from "@automerge/automerge-repo-storage-indexeddb";
-import { openStore, type BamStore } from "../src/store.ts";
+import { learnedRelayPeers, openStore, type BamStore } from "../src/store.ts";
 import { makeWebApi } from "../src/webapi.ts";
 import { registerRosterView } from "../src/roster-view.ts";
 import { LANGUAGES } from "../src/domain/catalog.ts";
@@ -82,7 +82,7 @@ function firstRunScreen(root: HTMLElement, peerId: string): Promise<AppConfig> {
 
     const rosterUrl = el("input", { class: "input", placeholder: "automerge:… roster URL" });
     const endpoint = el("input", { class: "input", placeholder: "wss://relay… (Subduction endpoint)" });
-    const relayPeer = el("input", { class: "input", placeholder: "relay peer id (64 hex — printed by the server)" });
+    const relayPeer = el("input", { class: "input", placeholder: "relay peer id (64 hex) — leave empty to trust & pin on first connect" });
     const joinBtn = el("button", { class: "btn btn-block" }, "Join an existing org");
 
     createBtn.onclick = () => {
@@ -154,6 +154,9 @@ async function boot(): Promise<void> {
 
   root.innerHTML = "<div class='loading'>Opening the local store…</div>";
   const storage = new IndexedDBStorageAdapter("bam-local-first");
+  // Relay-peer field left empty + an endpoint set = trust-on-first-use:
+  // learn the relay's key on this connect, pin it in the saved config.
+  const tofu = !!config.endpoint && !config.relayPeer;
   let store: BamStore;
   try {
     store = await openStore({
@@ -161,6 +164,7 @@ async function boot(): Promise<void> {
       storage,
       endpoints: config.endpoint ? [config.endpoint] : [],
       alwaysAllow: config.relayPeer ? [config.relayPeer] : [],
+      trustDialedRelays: tofu,
       ...(config.mode === "join"
         ? { rosterUrl: config.rosterUrl }
         : { createOrg: config.orgName ?? "BAM", deviceName: "founding browser device" }),
@@ -176,6 +180,23 @@ async function boot(): Promise<void> {
   // Persist config only after a successful open, with the resolved roster URL
   // so subsequent loads work fully offline.
   saveConfig({ ...config, mode: "join", rosterUrl: store.roster.url });
+
+  if (tofu) {
+    // Pin the learned relay key so future sessions verify it.
+    void (async () => {
+      for (let i = 0; i < 20; i++) {
+        if (store.repo.isSubductionConnected()) {
+          const learned = await learnedRelayPeers(store);
+          if (learned.length) {
+            saveConfig({ ...config, mode: "join", rosterUrl: store.roster.url, relayPeer: learned[0] });
+            console.info(`trust-on-first-use: pinned relay peer ${learned[0]}`);
+            return;
+          }
+        }
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+    })();
+  }
 
   // Console bootstrap: adapter + languages first, then the classic scripts.
   const w = window as unknown as { BAM?: Record<string, unknown> };

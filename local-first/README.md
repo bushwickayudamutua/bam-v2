@@ -94,8 +94,9 @@ Build and run a Subduction server (Rust; not on crates.io yet):
 ```sh
 git clone https://github.com/inkandswitch/subduction && cd subduction
 cargo build --release -p subduction_cli
+head -c 32 /dev/urandom | xxd -p -c 64 > relay.key   # stable identity
 ./target/release/subduction_cli server --socket 127.0.0.1:8944 \
-  --data-dir /tmp/subduction-data --ephemeral-key --auth keyhive
+  --data-dir /tmp/subduction-data --key-file relay.key --auth keyhive
 # note the "Peer ID" line it prints — that's the relay key clients must trust
 ```
 
@@ -104,13 +105,41 @@ Device A (has the org): `bam-lf sync --endpoint ws://127.0.0.1:8944 --relay-peer
 Device B (new): ask an admin to `bam-lf roster add --peer <B's id> --name "Vol phone"`,
 then `bam-lf org join --roster <automerge:url> --endpoint ws://127.0.0.1:8944 --relay-peer <relay-hex>`.
 
+**Relay trust.** Each device's policy gates its own dial, so the relay's
+peer id must be trusted. Two ways to provide it:
+
+- `--relay-peer <hex>` — pin a known key up front (preferred when the
+  operator can distribute it, e.g. your own relay).
+- `--trust-relay` — trust-on-first-use: connect without knowing the key,
+  learn the relay's peer id from the handshake, and **pin it in
+  `state.json`** so every later run verifies it. For relays whose key isn't
+  published — like the maintainers' experiment relay. In the browser app,
+  leaving the relay-peer field empty does the same. TOFU is only safe in
+  this client-only topology (nothing can dial *us*), and only for orgs
+  without real PII.
+
+### The Ink & Switch experiment relay
+
+The maintainers' relay, `wss://sync.subduction.inkandswitch.com`, is this
+package's **default endpoint** (`DEFAULT_SYNC_ENDPOINT`) and per the
+maintainers currently approves all relay traffic — fine for experiments,
+**never for real PII** (an approve-all relay serves anyone who knows a doc
+URL). As of 2026-07-06 the hostname is **not in public DNS** (NXDOMAIN from
+Cloudflare and Google resolvers), so it isn't reachable yet — ask the
+maintainers when it goes live. The moment it resolves, using it is:
+
+```sh
+bam-lf sync --trust-relay                       # default endpoint, learn + pin
+bam-lf org join --roster <url> --trust-relay
+```
+
+(The TOFU path is verified end-to-end against a local relay in this repo:
+dial with no pre-known key → learn → pin → the pinned key matches the
+relay's actual key.)
+
 The end-to-end path (B joins by roster URL and receives the org data) runs
 in CI-skippable tests: `SUBDUCTION_RELAY=ws://127.0.0.1:8944
 SUBDUCTION_RELAY_PEER=<hex> npm test`.
-
-The maintainers also run an experiment relay (approve-all; do not use with
-PII); at the time of writing its hostname did not resolve publicly — ask
-them for the current endpoint, or self-host as above.
 
 ## Browser console
 

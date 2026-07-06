@@ -59,6 +59,16 @@ export interface RosterPolicyOptions {
    * else.
    */
   alwaysAllow?: string[];
+  /**
+   * Trust-on-first-use mode: allow ANY peer. Only sane in a client-only
+   * topology (browser/CLI dialing out via `subductionWebsocketEndpoints`),
+   * where the only peers that can appear are relays this device chose to
+   * dial — there is no listener for strangers to reach. Used to learn a
+   * relay's peer id on the first connect (e.g. the Ink & Switch experiment
+   * relay, whose key isn't published); callers should capture the learned
+   * id and switch back to pinned mode. Never combine with real PII.
+   */
+  trustAll?: boolean;
 }
 
 /**
@@ -75,6 +85,7 @@ export function rosterPolicy(
   const always = new Set(opts.alwaysAllow ?? []);
 
   const allowed = (peerId: unknown): boolean => {
+    if (opts.trustAll) return true;
     const id = String(peerId);
     return always.has(id) || isActiveMember(getRoster(), id);
   };
