@@ -170,6 +170,37 @@ a phone (raw value noted) per the spec's shared-phone edge case; form
 submissions linked to a household are marked processed (their requests
 already exist), unlinked ones stay pending for `bam process-intake`.
 
+### 16a. Parity-audit round (2026-07-06)
+
+A section-by-section parity audit against the spec closed these gaps:
+
+- **"[REQUEST_URL] (randomized)"** (6.2 sequence diagram): each blast message
+  now carries a unique `?r=<token>` variant of the form URL so providers
+  don't flag hundreds of identical bodies as spam (the same reason
+  bam-automation randomized it for Dialpad). `BAM_RANDOMIZE_REQUEST_URL=0`
+  disables.
+- **"Delivered Request Types" lookup** (spec 4, Households): the check-in
+  view (`GET /households/lookup`, `GET /households/{id}`) now includes what
+  the household already received; household notes are also shown.
+- **Check in via phone number/name** (journey step 5): `GET
+  /households/search?name=` plus `GET /households/{id}` back a name-search
+  fallback in the console for recipients who arrive without their phone.
+- **Fulfilled read surface** (spec 2 "track fulfilled vs outstanding"):
+  `GET /metrics/fulfilled?start=&end=` and a last-30-days dashboard card.
+- **All 12 social services** (spec 4) are selectable in the console intake
+  form, which also gained the spec 6.1 conditional furniture fields (bed
+  details, furniture acknowledgement).
+- **One language vocabulary** (`GET /catalog`, `BAM.LANGUAGES`): intake
+  writes and outreach filters use the production base's exact language
+  strings, so the 6.2 language filter actually matches.
+
+Deliberately not implemented (post-MVP per the spec/appendix): appointment
+reminders, automated outreach targeting, inventory tracking, volunteer
+scheduling, delivery/transport coordination (appendix A.1), and per-distro
+attendance-rate analytics (section 3 lists it as a planning metric; the
+underlying events are recorded but no durable per-distro attendance log
+exists yet).
+
 ### 16. The catalog mirrors production, and Mesh Requests are imported
 
 The request-type catalog (`bam/request_types.py`) carries the production

@@ -25,6 +25,8 @@ from bam.services.checkin import (
     fulfill_requests,
     lookup_by_phone,
     process_no_shows,
+    search_by_name,
+    view_for_household,
 )
 from tests.conftest import FIXED_NOW, days_ago
 
@@ -292,6 +294,58 @@ class TestProcessNoShows:
         assert other_date.missed_appointment_count == 1
         assert checked_in_request.status == RequestStatus.OPEN
         assert other_date_request.status == RequestStatus.OPEN
+
+
+class TestSpecParityAdditions:
+    def test_delivered_request_types_shown_in_view(
+        self, session, make_household, make_request
+    ) -> None:
+        """Spec 4 Households "Delivered Request Types" lookup: volunteers see
+        what a household already received."""
+        household = make_household(session)
+        delivered = make_request(session, household, type="soap")
+        fulfill_requests(session, request_ids=[delivered.id], now=FIXED_NOW)
+        make_request(session, household, type="pads")  # still open
+        social = make_social_request(session, household, type="housing")
+        fulfill_requests(
+            session, social_service_request_ids=[social.id], now=FIXED_NOW
+        )
+
+        view = lookup_by_phone(session, household.phone_number)
+
+        assert view.delivered_request_types == ["soap", "housing"]
+        assert [r.type for r in view.open_requests] == ["pads"]
+
+    def test_household_notes_visible_in_view(self, session, make_household) -> None:
+        household = make_household(session, notes="wheelchair access needed")
+
+        view = lookup_by_phone(session, household.phone_number)
+
+        assert view.household.notes == "wheelchair access needed"
+
+    def test_search_by_name(self, session, make_household) -> None:
+        """Spec journey step 5: check in via phone number/NAME."""
+        ana = make_household(session, name="Ana María López")
+        make_household(session, name="Rosa Diaz")
+        anonymized = make_household(session, name=None)
+
+        matches = search_by_name(session, "maría lóp")
+
+        assert [m.id for m in matches] == [ana.id]
+        assert search_by_name(session, "  ") == []
+        assert anonymized.id not in [m.id for m in search_by_name(session, "a")]
+
+    def test_view_for_household_by_id(self, session, make_household, make_request) -> None:
+        household = make_household(session)
+        request = make_request(session, household)
+
+        view = view_for_household(session, household.id)
+
+        assert view.household.id == household.id
+        assert [r.id for r in view.open_requests] == [request.id]
+
+        with pytest.raises(ValueError):
+            view_for_household(session, 999_999)
 
 
 class TestFulfillmentIdempotency:

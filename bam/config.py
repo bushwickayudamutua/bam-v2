@@ -47,6 +47,13 @@ class Settings:
             "BAM_REQUEST_FORM_URL", "https://forms.fillout.com/t/ivajQbwoWxus"
         )
     )
+    # Spec 6.2 sequence diagram: "[REQUEST_URL] (randomized)" — a unique
+    # query token per message so carriers/providers don't flag 240 identical
+    # bodies as spam (same reason as bam-automation's send_dialpad_sms).
+    randomize_request_url: bool = field(
+        default_factory=lambda: os.environ.get("BAM_RANDOMIZE_REQUEST_URL", "1")
+        not in ("0", "false", "no", "")
+    )
 
     # Request lifecycle (spec 2 / 4: 14-day standard window, 30 days pots & pans)
     default_expiry_days: int = field(default_factory=lambda: _env_int("BAM_DEFAULT_EXPIRY_DAYS", 14))

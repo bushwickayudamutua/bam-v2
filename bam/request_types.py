@@ -127,6 +127,25 @@ SPEC_COMPAT: list[RequestType] = [
 ALL_TYPES: list[RequestType] = GOODS + SOCIAL_SERVICES + SPEC_COMPAT
 BY_KEY: dict[str, RequestType] = {t.key: t for t in ALL_TYPES}
 
+#: The production base's Households.Languages select options, verbatim
+#: (spec background section 6: 11 supported languages, plus Other). Single
+#: source of truth for intake and outreach language vocabularies — exposed
+#: via GET /catalog so the console views cannot drift.
+LANGUAGES: list[str] = [
+    "Inglés / English / 英文",
+    "Español / Spanish / 西班牙语",
+    "Chino Mandarín / Mandarin / 普通话",
+    "Chino Cantonés / Cantonese / 广东话",
+    "Chino Toishanés / Toishanese / 台山话",
+    "Quechua el dialecto / Quechua Dialect / 克丘亞語",
+    "Portugués / Portuguese / 葡萄牙語",
+    "Criollo Haitiano / Haitian Creole / 法屬歸融語",
+    "Tagalo/ Tagalog/ 他加禄语",
+    "Árabe / Arabic / 阿拉伯語",
+    "Francés / French / 法語",
+    "Otro / Other / 其他語言",
+]
+
 #: Alternate names that aren't already a label segment: item-level names
 #: from the current forms plus common shorthand.
 ITEM_ALIASES: dict[str, str] = {

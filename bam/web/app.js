@@ -9,6 +9,25 @@
 
   const BAM = (window.BAM = window.BAM || {});
 
+  // Language vocabulary — the production base's Languages options verbatim
+  // (server source of truth: GET /catalog). Intake writes and outreach
+  // filters MUST share this list; exact-string intersection is how the
+  // backend matches languages (spec 6.2 step 1).
+  BAM.LANGUAGES = [
+    "Inglés / English / 英文",
+    "Español / Spanish / 西班牙语",
+    "Chino Mandarín / Mandarin / 普通话",
+    "Chino Cantonés / Cantonese / 广东话",
+    "Chino Toishanés / Toishanese / 台山话",
+    "Quechua el dialecto / Quechua Dialect / 克丘亞語",
+    "Portugués / Portuguese / 葡萄牙語",
+    "Criollo Haitiano / Haitian Creole / 法屬歸融語",
+    "Tagalo/ Tagalog/ 他加禄语",
+    "Árabe / Arabic / 阿拉伯語",
+    "Francés / French / 法語",
+    "Otro / Other / 其他語言",
+  ];
+
   // View registry, in registration order (drives the nav).
   const views = new Map();
 

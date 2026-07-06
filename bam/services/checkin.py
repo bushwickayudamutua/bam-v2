@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from bam.config import settings
 from bam.errors import NotFoundError
@@ -26,6 +26,7 @@ from bam.models import (
 )
 from bam.schemas import (
     CheckinView,
+    HouseholdMatch,
     HouseholdOut,
     NoShowReport,
     RequestOut,
@@ -50,6 +51,13 @@ def lookup_by_phone(session: Session, phone: str) -> CheckinView | None:
     ).first()
     if household is None:
         return None
+    return build_checkin_view(session, household)
+
+
+def build_checkin_view(session: Session, household: Household) -> CheckinView:
+    """Assemble the volunteer-facing view: open requests of both kinds plus
+    the "Delivered Request Types" lookup (spec 4) — what the household has
+    already received."""
     open_requests = session.exec(
         select(Request)
         .where(Request.household_id == household.id, Request.status == RequestStatus.OPEN)
@@ -63,13 +71,55 @@ def lookup_by_phone(session: Session, phone: str) -> CheckinView | None:
         )
         .order_by(SocialServiceRequest.request_opened_at, SocialServiceRequest.id)
     ).all()
+    delivered = session.exec(
+        select(Request.type)
+        .where(
+            Request.household_id == household.id,
+            Request.status == RequestStatus.DELIVERED,
+        )
+        .distinct()
+        .order_by(Request.type)
+    ).all()
+    delivered_social = session.exec(
+        select(SocialServiceRequest.type)
+        .where(
+            SocialServiceRequest.household_id == household.id,
+            SocialServiceRequest.status == RequestStatus.DELIVERED,
+        )
+        .distinct()
+        .order_by(SocialServiceRequest.type)
+    ).all()
     return CheckinView(
         household=HouseholdOut.model_validate(household),
         open_requests=[RequestOut.model_validate(r) for r in open_requests],
         open_social_service_requests=[
             SocialServiceRequestOut.model_validate(s) for s in open_social
         ],
+        delivered_request_types=[*delivered, *delivered_social],
     )
+
+
+def view_for_household(session: Session, household_id: int) -> CheckinView:
+    """CheckinView by id (used after a name search picks a household)."""
+    household = session.get(Household, household_id)
+    if household is None:
+        raise NotFoundError(f"Unknown household id {household_id}")
+    return build_checkin_view(session, household)
+
+
+def search_by_name(session: Session, name: str, limit: int = 20) -> list[HouseholdMatch]:
+    """Case-insensitive name search (spec journey step 5: check in via
+    phone number/name) for recipients who arrive without their phone."""
+    needle = name.strip()
+    if not needle:
+        return []
+    households = session.exec(
+        select(Household)
+        .where(col(Household.name).is_not(None), col(Household.name).ilike(f"%{needle}%"))
+        .order_by(Household.name, Household.id)
+        .limit(limit)
+    ).all()
+    return [HouseholdMatch.model_validate(h, from_attributes=True) for h in households]
 
 
 def check_in(session: Session, household_id: int, now: datetime | None = None) -> Household:

@@ -24,18 +24,35 @@
     { key: "baby_diapers", label: "Baby Diapers" },
     { key: "school_supplies", label: "School Supplies" },
     { key: "clothing", label: "Clothing" },
+    { key: "sofa", label: "Sofa" },
+    { key: "bed", label: "Bed" },
+    { key: "crib", label: "Crib" },
+    { key: "other_furniture", label: "Other Furniture" },
   ];
 
-  // Social services shown as checkboxes (spec 6.1). Values are catalog keys.
+  // Goods keys that reveal the furniture-details card (bed details +
+  // acknowledgement + delivery address emphasis, spec 6.1).
+  const FURNITURE_HINT = /bed|mattress|sofa|crib|furniture|dresser|desk|table|chairs|storage|refrigerator|fridge|conditioner/i;
+
+  // All 12 social services (spec 4: "Service type (12 options)"), catalog keys.
   const SOCIAL_SERVICES = [
     { key: "housing", label: "Securing housing" },
     { key: "health_insurance", label: "Medical insurance support" },
+    { key: "tenant_legal", label: "Tenant legal assistance" },
+    { key: "in_school_services", label: "In-school services" },
+    { key: "tutoring", label: "Tutoring for students" },
     { key: "english_classes", label: "English classes" },
+    { key: "business_support", label: "Small business support" },
+    { key: "food_benefits", label: "Food benefits (WIC / SNAP / P-EBT)" },
+    { key: "transportation", label: "Transportation assistance" },
+    { key: "child_disability", label: "Assistance for disabled children" },
+    { key: "pet_assistance", label: "Pet assistance" },
     { key: "internet", label: "Low-cost home internet" },
   ];
 
-  // Common languages as checkboxes; a free-text field adds any others.
-  const COMMON_LANGUAGES = ["English", "Español", "中文 / Mandarin"];
+  // Shared language vocabulary (BAM.LANGUAGES, app.js) — the same verbatim
+  // strings the outreach filters use, so exact-string matching works.
+  const COMMON_LANGUAGES = window.BAM.LANGUAGES;
 
   // Internet-access options mirror the production form; only shown when the
   // "internet" social service is selected. Free-form on the server; we send
@@ -203,6 +220,49 @@
       )
     );
 
+    // ---- furniture details card (spec 6.1: Bed Details + Furniture
+    // Acknowledgement) — visible only when a furniture-ish good is selected.
+    const bedDetailsInput = h("input", {
+      class: "input",
+      id: "intake-bed-details",
+      name: "bed_details",
+      type: "text",
+      autocomplete: "off",
+      placeholder: "e.g. Queen mattress + frame",
+    });
+    const furnitureAckBox = checkboxRow(
+      "intake-furniture-ack",
+      "Household understands furniture terms (pickup/delivery arrangements)",
+      { value: "ack" }
+    );
+    const furniturePanel = h(
+      "div",
+      { class: "card stack", id: "intake-furniture-panel", hidden: true, style: { display: "none" } },
+      h("h3", { class: "card__title", style: { fontSize: "14px" } }, "Furniture details"),
+      field(
+        "intake-bed-details",
+        "Bed details (size, mattress/frame)",
+        bedDetailsInput,
+        "Stored with the bed/furniture request."
+      ),
+      furnitureAckBox,
+      h(
+        "p",
+        { class: "muted", style: { margin: "0" } },
+        "Remember the delivery address below — furniture requests need it."
+      )
+    );
+
+    function furnitureSelected() {
+      return [...selectedGoods].some((value) => FURNITURE_HINT.test(value));
+    }
+
+    function syncFurniturePanel() {
+      const on = furnitureSelected();
+      furniturePanel.hidden = !on;
+      furniturePanel.style.display = on ? "" : "none";
+    }
+
     // ---- social services card -------------------------------------------
     const serviceBoxes = SOCIAL_SERVICES.map((svc) =>
       checkboxRow(`svc-${svc.key}`, svc.label, {
@@ -314,6 +374,7 @@
       contactCard,
       languagesCard,
       goodsCard,
+      furniturePanel,
       servicesCard,
       addressCard,
       notesCard,
@@ -336,6 +397,9 @@
       COMMON_GOODS.forEach((g) => chips.push(goodsChip(g.key, g.label, false)));
       customGoods.forEach((value) => chips.push(goodsChip(value, prettyType(value), true)));
       goodsChips.append(...chips);
+      // Every selection change flows through here, so this keeps the
+      // furniture-details card in sync with the chips.
+      syncFurniturePanel();
     }
 
     function goodsChip(value, label, removable) {
@@ -482,6 +546,8 @@
     function buildPayload() {
       const social = collectServices();
       const roofBoxEl = document.getElementById("intake-roof");
+      const ackBoxEl = document.getElementById("intake-furniture-ack");
+      const bedDetails = bedDetailsInput.value.trim();
       const payload = {
         phone_number: phoneInput.value.trim(),
         name: nameInput.value.trim() || null,
@@ -491,6 +557,8 @@
         social_service_requests: social,
         internet_access: collectInternetAccess(),
         roof_accessible: internetChecked() && !!(roofBoxEl && roofBoxEl.checked),
+        bed_details: furnitureSelected() && bedDetails ? [bedDetails] : [],
+        furniture_acknowledgement: furnitureSelected() && !!(ackBoxEl && ackBoxEl.checked),
         notes: notesInput.value.trim() || null,
         street_address: streetInput.value.trim() || null,
         city_state: cityInput.value.trim() || null,
@@ -537,6 +605,7 @@
       renderGoodsChips();
       renderLanguageChips();
       syncInternetPanel();
+      syncFurniturePanel();
       setTimeout(() => phoneInput.focus(), 0);
     }
 

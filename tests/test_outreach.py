@@ -246,9 +246,10 @@ class TestSendTextBlast:
             "Hola [FIRST_NAME]! Book here: [REQUEST_URL]",
             sms,
             now=FIXED_NOW,
+            token_factory=lambda: "tok1",
         )
 
-        expected = f"Hola Maria! Book here: {settings.request_form_url}"
+        expected = f"Hola Maria! Book here: {settings.request_form_url}?r=tok1"
         assert report.sent == 1
         assert report.failed == 0
         assert len(sms.sent) == 1
@@ -257,6 +258,40 @@ class TestSendTextBlast:
         assert report.messages[0].household_id == household.id
         assert report.messages[0].body == expected
         assert report.messages[0].ok is True
+
+    def test_request_url_randomized_per_message(
+        self,
+        session: Session,
+        make_household: HouseholdFactory,
+        sms: ConsoleSMSProvider,
+    ) -> None:
+        """Spec 6.2 sequence diagram: "[REQUEST_URL] (randomized)" — each
+        message carries a distinct URL variant of the same base."""
+        first = make_household(session)
+        second = make_household(session)
+
+        send_text_blast(
+            session, [first.id, second.id], "[REQUEST_URL]", sms, now=FIXED_NOW
+        )
+
+        bodies = [m.body for m in sms.sent]
+        assert len(bodies) == 2
+        assert bodies[0] != bodies[1]
+        assert all(b.startswith(settings.request_form_url + "?r=") for b in bodies)
+
+    def test_request_url_randomization_can_be_disabled(
+        self,
+        session: Session,
+        make_household: HouseholdFactory,
+        sms: ConsoleSMSProvider,
+        monkeypatch,
+    ) -> None:
+        monkeypatch.setattr(settings, "randomize_request_url", False)
+        household = make_household(session)
+
+        send_text_blast(session, [household.id], "[REQUEST_URL]", sms, now=FIXED_NOW)
+
+        assert sms.sent[0].body == settings.request_form_url
 
     def test_success_sets_last_texted_today(
         self,

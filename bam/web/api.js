@@ -93,6 +93,12 @@
     lookup(phone) {
       return request("GET", `/households/lookup${qs({ phone })}`);
     },
+    searchByName(name) {
+      return request("GET", `/households/search${qs({ name })}`);
+    },
+    householdView(id) {
+      return request("GET", `/households/${id}`);
+    },
     checkIn(id) {
       return request("POST", `/households/${id}/checkin`, {});
     },
@@ -156,6 +162,17 @@
     // Metrics (spec 5) -----------------------------------------------------
     openRequests() {
       return request("GET", "/metrics/open-requests");
+    },
+    fulfilled({ start, end } = {}) {
+      return request("GET", `/metrics/fulfilled${qs({ start, end })}`);
+    },
+
+    // Catalog (request types + languages; single source of truth) ----------
+    catalog() {
+      if (!this._catalogPromise) {
+        this._catalogPromise = request("GET", "/catalog");
+      }
+      return this._catalogPromise;
     },
   };
 

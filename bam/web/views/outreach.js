@@ -18,19 +18,9 @@
 
   const { h, clear, toast, api, fmtDate, fmtDateTime } = window.BAM;
 
-  // Curated common languages (verbatim trilingual labels from the base). The
-  // operator can add any others as free text; these just cover the long tail's
-  // head so the common case is one tap.
-  const COMMON_LANGUAGES = [
-    "Español / Spanish / 西班牙语",
-    "Inglés / English / 英文",
-    "Quechua el dialecto / Quechua Dialect / 克丘亞語",
-    "Árabe / Arabic / 阿拉伯語",
-    "Chino Mandarín / Mandarin / 普通话",
-    "Chino Cantonés / Cantonese / 广东话",
-    "Criollo Haitiano / Haitian Creole / 法屬歸融語",
-    "Francés / French / 法語",
-  ];
+  // Shared language vocabulary (BAM.LANGUAGES, app.js): the exact strings
+  // intake writes, so exact-string filtering (spec 6.2 step 1) matches.
+  const COMMON_LANGUAGES = window.BAM.LANGUAGES;
 
   const DEFAULT_TEMPLATE =
     "Hola [FIRST_NAME]! BAM tiene una distribución próximamente. " +

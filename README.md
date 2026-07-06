@@ -85,7 +85,7 @@ for use on a volunteer's phone at a distribution. Six views:
 
 | View | Spec | What you can do |
 |---|---|---|
-| Check-in | 6.3 | Look a household up by phone, see its open goods + social service requests, check the household in, mark selected requests delivered. |
+| Check-in | 6.3 | Look a household up by phone **or name**, see its open goods + social service requests (and what it already received), check the household in, mark selected requests delivered. |
 | Intake | 6.1 | Submit an assistance request form (multi-language, goods + social services). |
 | Outreach | 6.2 / A4–A6 | Build a filtered outreach list, send the templated text blast, book appointments, record phone-outreach outcomes. |
 | Distros | 4 / 6.3 | Create/list distributions and run the end-of-distro no-show pass (guarded confirm). |
@@ -120,6 +120,7 @@ All settings come from environment variables (`bam/config.py`):
 | `BAM_SMS_BATCH_SIZE` | `30` | Messages sent before pausing. |
 | `BAM_SMS_BATCH_PAUSE_SECONDS` | `30` | Pause length between batches. |
 | `BAM_REQUEST_FORM_URL` | `https://forms.fillout.com/t/ivajQbwoWxus` | Value substituted for `[REQUEST_URL]` in blast templates. |
+| `BAM_RANDOMIZE_REQUEST_URL` | `1` | Append a unique `?r=<token>` per message (spec 6.2 "[REQUEST_URL] (randomized)"; avoids provider spam filtering). |
 | `BAM_DEFAULT_EXPIRY_DAYS` | `14` | Standard request auto-expiration window. |
 | `BAM_EXTENDED_EXPIRY_DAYS` | `30` | Pots & pans expiration window. |
 | `BAM_MAX_MISSED_APPOINTMENTS` | `2` | Missed appointments before open requests time out. |

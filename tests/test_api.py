@@ -338,3 +338,59 @@ def test_outreach_outcome_error_mapping(client):
         json={"outcome": "number not found"},
     )
     assert response.status_code == 400
+
+
+def test_catalog_endpoint(client):
+    """GET /catalog: the vocabulary the console builds its UI from."""
+    response = client.get("/catalog")
+    assert response.status_code == 200
+    catalog = response.json()
+    goods_keys = {t["key"] for t in catalog["goods"]}
+    social_keys = {t["key"] for t in catalog["social_services"]}
+    assert {"soap", "pots_pans", "sofa"} <= goods_keys
+    assert len(social_keys) >= 12  # spec 4: "Service type (12 options)"
+    assert {"tenant_legal", "housing", "pet_assistance", "internet"} <= social_keys
+    assert "Español / Spanish / 西班牙语" in catalog["languages"]
+    assert all({"key", "label", "category"} <= set(t) for t in catalog["goods"])
+
+
+def test_name_search_and_view_by_id(client):
+    """Spec journey step 5: check in via phone number/name — API path."""
+    created = client.post(
+        "/intake/submissions",
+        json={
+            "phone_number": "718-555-0177",
+            "name": "Carmen Reyes",
+            "request_types": ["soap"],
+        },
+    ).json()
+
+    matches = client.get("/households/search", params={"name": "carmen"}).json()
+    assert [m["id"] for m in matches] == [created["household_id"]]
+
+    view = client.get(f"/households/{created['household_id']}")
+    assert view.status_code == 200
+    assert view.json()["household"]["name"] == "Carmen Reyes"
+    assert [r["type"] for r in view.json()["open_requests"]] == ["soap"]
+
+    assert client.get("/households/999999").status_code == 404
+
+
+def test_fulfilled_metrics_endpoint(client):
+    """Spec 2 goal "track fulfilled vs outstanding": the fulfilled read surface."""
+    created = client.post(
+        "/intake/submissions",
+        json={"phone_number": "718-555-0178", "request_types": ["soap"]},
+    ).json()
+    request_id = created["created_request_ids"][0]
+    client.post("/requests/fulfill", json={"request_ids": [request_id]})
+
+    rows = client.get("/metrics/fulfilled").json()
+    assert len(rows) == 1
+    assert rows[0]["type"] == "soap"
+    assert rows[0]["count"] == 1
+    assert "Soap" in rows[0]["label"]
+
+    on_date = rows[0]["date"]
+    assert client.get("/metrics/fulfilled", params={"start": on_date, "end": on_date}).json() == rows
+    assert client.get("/metrics/fulfilled", params={"start": "2099-01-01"}).json() == []

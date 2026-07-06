@@ -8,6 +8,7 @@ phone-outreach outcomes A4-A6 (spec 6.4 and the flowchart's Timeout terminal).
 
 from __future__ import annotations
 
+import secrets
 import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Callable, Sequence
@@ -133,6 +134,7 @@ def send_text_blast(
     sleeper: Callable[[float], None] = time.sleep,
     now: datetime | None = None,
     dry_run: bool = False,
+    token_factory: Callable[[], str] | None = None,
 ) -> BlastReport:
     """Send a templated text blast to households (spec 6.2 sequence diagram).
 
@@ -153,10 +155,16 @@ def send_text_blast(
     nothing is persisted — the spec ties "Last Texted = TODAY()" to an SMS
     actually delivered, so a preview must not poison the recency filters of
     the real send.
+
+    Spec 6.2's "[REQUEST_URL] (randomized)": each message gets a unique
+    ``?r=<token>`` variant of the form URL so providers don't flag hundreds
+    of identical bodies as spam (``BAM_RANDOMIZE_REQUEST_URL`` disables;
+    ``token_factory`` is injectable for deterministic tests).
     """
     now = now or utcnow()
     cap = settings.sms_max_messages if max_messages is None else max_messages
     batch_size = settings.sms_batch_size
+    make_token = token_factory or (lambda: secrets.token_urlsafe(4))
     report = BlastReport()
     attempted = 0
     pause_pending = False
@@ -180,10 +188,14 @@ def send_text_blast(
             pause_pending = False
 
         name_tokens = (household.name or "").split()
+        request_url = settings.request_form_url
+        if settings.randomize_request_url:
+            joiner = "&" if "?" in request_url else "?"
+            request_url = f"{request_url}{joiner}r={make_token()}"
         body = render_template(
             template,
             first_name=name_tokens[0] if name_tokens else "",
-            request_url=settings.request_form_url,
+            request_url=request_url,
         )
         result = provider.send(household.phone_number, body)
         attempted += 1

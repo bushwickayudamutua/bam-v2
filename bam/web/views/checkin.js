@@ -21,6 +21,15 @@
     return h("span", { class: `badge ${cls}` }, status);
   }
 
+  // "baby_diapers" -> "Baby diapers"; full labels/free text pass through.
+  function prettyType(value) {
+    if (/^[a-z0-9_]+$/.test(value)) {
+      const s = value.replace(/_/g, " ");
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    }
+    return value;
+  }
+
   // Appointment status -> badge (booked/checked-in/missed), or nothing.
   function appointmentBadge(status) {
     if (!status) return null;
@@ -47,7 +56,11 @@
       "div",
       { class: "view-heading" },
       h("h1", {}, "Check-in"),
-      h("p", { class: "muted" }, "Look up a household by phone to check them in and mark deliveries.")
+      h(
+        "p",
+        { class: "muted" },
+        "Look up a household by phone number or name (spec: check in via phone number/name)."
+      )
     );
 
     // ---- lookup form -----------------------------------------------------
@@ -60,6 +73,15 @@
       autocomplete: "off",
       placeholder: "(718) 555-0142",
       "aria-label": "Phone number",
+    });
+    const nameInput = h("input", {
+      class: "input",
+      id: "checkin-name",
+      name: "name",
+      type: "text",
+      autocomplete: "off",
+      placeholder: "e.g. Maria",
+      "aria-label": "Name",
     });
 
     const lookupBtn = h(
@@ -83,6 +105,12 @@
         h("label", { class: "label", for: "checkin-phone" }, "Phone number"),
         phoneInput
       ),
+      h(
+        "div",
+        { class: "field" },
+        h("label", { class: "label", for: "checkin-name" }, "…or name (if they arrived without their phone)"),
+        nameInput
+      ),
       lookupBtn
     );
 
@@ -105,8 +133,9 @@
 
     async function doLookup() {
       const phone = phoneInput.value.trim();
-      if (!phone) {
-        toast("Enter a phone number to look up.", "info");
+      const name = nameInput.value.trim();
+      if (!phone && !name) {
+        toast("Enter a phone number or a name to look up.", "info");
         phoneInput.focus();
         return;
       }
@@ -115,12 +144,25 @@
       selectedRequests.clear();
       selectedServices.clear();
       try {
-        state.view = await api.lookup(phone);
-        renderResult();
+        if (phone) {
+          state.view = await api.lookup(phone);
+          renderResult();
+        } else {
+          const matches = await api.searchByName(name);
+          if (!matches.length) {
+            state.view = null;
+            renderNotFound(name);
+          } else if (matches.length === 1) {
+            await loadHousehold(matches[0].id);
+          } else {
+            state.view = null;
+            renderMatches(matches);
+          }
+        }
       } catch (err) {
         state.view = null;
         if (err instanceof api.ApiError && err.status === 404) {
-          renderNotFound(phone);
+          renderNotFound(phone || name);
         } else {
           showError(err);
           toast(err.detail || "Lookup failed.", "error");
@@ -128,6 +170,61 @@
       } finally {
         setBusy(false);
       }
+    }
+
+    // Load a CheckinView by id (second half of a name-search check-in).
+    async function loadHousehold(id) {
+      state.view = await api.householdView(id);
+      selectedRequests.clear();
+      selectedServices.clear();
+      renderResult();
+    }
+
+    // Several name-search hits: let the volunteer pick the right household.
+    function renderMatches(matches) {
+      clear(result);
+      result.append(
+        h(
+          "div",
+          { class: "card stack" },
+          h("h2", { class: "card__title" }, `${matches.length} matches`),
+          h(
+            "ul",
+            { class: "list" },
+            matches.map((m) =>
+              h(
+                "li",
+                { class: "list-item" },
+                h(
+                  "button",
+                  {
+                    type: "button",
+                    class: "btn btn-ghost grow",
+                    style: { justifyContent: "flex-start", textAlign: "left" },
+                    onclick: () => {
+                      setBusy(true);
+                      showLoading("Loading household…");
+                      loadHousehold(m.id)
+                        .catch((err) => {
+                          showError(err);
+                          toast(err.detail || "Could not load household.", "error");
+                        })
+                        .finally(() => setBusy(false));
+                    },
+                  },
+                  h("div", { class: "stack", style: { gap: "2px" } },
+                    h("div", { class: "list-item__label" }, m.name || `Household #${m.id}`),
+                    h(
+                      "div",
+                      { class: "list-item__meta" },
+                      [m.phone_number, (m.languages || []).join(", ")].filter(Boolean).join(" · ") || "no phone on file"
+                    ))
+                )
+              )
+            )
+          )
+        )
+      );
     }
 
     async function doCheckIn() {
@@ -167,17 +264,15 @@
       }
     }
 
-    // Re-fetch the household after a mutation so the UI reflects server truth.
+    // Re-fetch the household after a mutation so the UI reflects server
+    // truth. Fetches by id so phoneless households (name-search path,
+    // wrong-number outcomes) refresh too.
     async function refresh() {
-      const phone = state.view.household.phone_number || phoneInput.value.trim();
       try {
-        state.view = await api.lookup(phone);
+        state.view = await api.householdView(state.view.household.id);
         renderResult();
       } catch (err) {
-        // Household may lose its phone (wrong-number outcome) — keep last view.
-        if (!(err instanceof api.ApiError && err.status === 404)) {
-          toast(err.detail || "Could not refresh.", "error");
-        }
+        toast(err.detail || "Could not refresh.", "error");
       } finally {
         setBusy(false);
       }
@@ -310,6 +405,24 @@
             ? h("span", { class: "pill" }, hh.languages.join(", "))
             : null
         ),
+        // Delivered Request Types lookup (spec 4): what they already received.
+        v.delivered_request_types && v.delivered_request_types.length
+          ? h(
+              "div",
+              { class: "list-item__meta" },
+              "Already received: " +
+                v.delivered_request_types.map(prettyType).join(", ")
+            )
+          : null,
+        // Household notes — operational context for the volunteer.
+        hh.notes
+          ? h(
+              "details",
+              {},
+              h("summary", { class: "muted" }, "Notes"),
+              h("div", { class: "list-item__meta", style: { whiteSpace: "pre-wrap" } }, hh.notes)
+            )
+          : null,
         // Primary check-in action.
         h(
           "button",

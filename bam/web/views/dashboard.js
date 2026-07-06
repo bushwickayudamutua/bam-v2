@@ -48,6 +48,16 @@
       showLoading("Loading metrics…");
       try {
         state.metrics = await api.openRequests();
+        // Fulfilled counts (spec 2: track fulfilled vs outstanding) for the
+        // last 30 days; non-fatal if it fails.
+        try {
+          const start = new Date(Date.now() - 30 * 24 * 3600 * 1000)
+            .toISOString()
+            .slice(0, 10);
+          state.fulfilled = await api.fulfilled({ start });
+        } catch (_e) {
+          state.fulfilled = null;
+        }
         renderResult();
       } catch (err) {
         state.metrics = null;
@@ -266,6 +276,48 @@
       );
 
       result.append(barsCard);
+      renderFulfilled();
+    }
+
+    // Fulfilled deliveries over the last 30 days, grouped per day
+    // (spec 2 goal: track fulfilled vs outstanding requests).
+    function renderFulfilled() {
+      const rows = state.fulfilled;
+      if (!rows || !rows.length) return;
+      const byDate = new Map();
+      rows.forEach((r) => {
+        if (!byDate.has(r.date)) byDate.set(r.date, []);
+        byDate.get(r.date).push(r);
+      });
+      const days = [...byDate.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
+      const total = rows.reduce((sum, r) => sum + (r.count || 0), 0);
+      result.append(
+        h(
+          "div",
+          { class: "card stack" },
+          h("h2", { class: "card__title" }, `Fulfilled — last 30 days (${total})`),
+          h(
+            "ul",
+            { class: "list" },
+            days.map(([date, items]) =>
+              h(
+                "li",
+                { class: "list-item" },
+                h(
+                  "div",
+                  { class: "list-item__body" },
+                  h("div", { class: "list-item__label" }, window.BAM.fmtDate(date)),
+                  h(
+                    "div",
+                    { class: "list-item__meta" },
+                    items.map((i) => `${i.label.split(" / ")[1] || i.label} ×${i.count}`).join(", ")
+                  )
+                )
+              )
+            )
+          )
+        )
+      );
     }
   }
 

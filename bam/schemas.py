@@ -82,6 +82,7 @@ class HouseholdOut(BaseModel):
     email: str | None = None
     email_error: str | None = None
     languages: list[str] = []
+    notes: str | None = None
     appointment_date: dt.date | None = None
     appointment_time: str | None = None
     appointment_status: AppointmentStatus | None = None
@@ -94,6 +95,25 @@ class CheckinView(BaseModel):
     household: HouseholdOut
     open_requests: list[RequestOut] = []
     open_social_service_requests: list[SocialServiceRequestOut] = []
+    # Spec 4 Households "Delivered Request Types" lookup: what the household
+    # has already received, so volunteers see history at check-in.
+    delivered_request_types: list[str] = []
+
+
+class HouseholdMatch(BaseModel):
+    """A name-search hit (spec journey step 5: check in via phone number/name)."""
+
+    id: int
+    name: str | None = None
+    phone_number: str | None = None
+    languages: list[str] = []
+
+
+class FulfilledCountOut(BaseModel):
+    date: dt.date
+    type: str
+    label: str
+    count: int
 
 
 class OutreachCandidate(BaseModel):
