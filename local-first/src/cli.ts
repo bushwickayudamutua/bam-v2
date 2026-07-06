@@ -14,7 +14,15 @@
  *   import --snapshot <dir>        import an Airtable snapshot (PII stays local)
  *   stats                          open request counts + roster summary
  *   outbox [--unsent]              list queued SMS messages
+ *   outbox drain --mark-sent       gateway loop step: print unsent + stamp sentAt
+ *   jobs expire                    daily cron: time out stale open requests
+ *   jobs scrub-pii                 daily cron: scrub expired PII
+ *   jobs website-data [--out f]    hourly cron: open request counts as JSON
  *   sync [--endpoint <wss://…>]    connect to a Subduction relay and stay up
+ *
+ * `jobs` and `outbox drain` connect using the endpoint/relay saved by
+ * `org join`/`sync` (if any) and linger briefly so mutations replicate —
+ * these are the cron automations, run on a dedicated enrolled device.
  *
  * Common flags: --data-dir <dir>   identity + storage + state (default ./.bam-lf)
  *
@@ -33,7 +41,8 @@ import { addMember, revokeMember } from "./roster.ts";
 import type { Role } from "./schema.ts";
 import { importSnapshot } from "./import.ts";
 import { openRequestCounts } from "./domain/metrics.ts";
-import { listOutbox } from "./domain/outreach.ts";
+import { listOutbox, markOutboxSent } from "./domain/outreach.ts";
+import { expireStale, scrubExpiredPii } from "./domain/lifecycle.ts";
 
 interface Flags {
   [key: string]: string | boolean;
@@ -119,6 +128,22 @@ async function open(dataDir: string, endpoints: string[] = []): Promise<BamStore
 
 function print(data: unknown): void {
   console.log(JSON.stringify(data, null, 2));
+}
+
+/** Open using the endpoint/relay saved by `org join`/`sync` (offline if none). */
+async function openWithSavedNetwork(dataDir: string): Promise<BamStore> {
+  const state = await loadState(dataDir);
+  return open(dataDir, state.endpoint ? [state.endpoint] : []);
+}
+
+/** Give a networked store a beat to pull/push before reading or exiting. */
+async function settle(store: BamStore, ms = 3000): Promise<void> {
+  if (!store.repo.isSubductionConnected()) {
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  if (store.repo.isSubductionConnected()) {
+    await new Promise((r) => setTimeout(r, ms));
+  }
 }
 
 async function main(): Promise<void> {
@@ -242,10 +267,54 @@ async function main(): Promise<void> {
     }
 
     case "outbox": {
+      if (subcommand === "drain") {
+        // Gateway step: connect, print every unsent message, and (with
+        // --mark-sent) stamp them. A real SMS gateway wraps this: send via
+        // its provider between listing and stamping.
+        const store = await openWithSavedNetwork(dataDir);
+        await settle(store);
+        const rows = listOutbox(store.base.doc(), { unsentOnly: true });
+        for (const m of rows) {
+          console.log(JSON.stringify({ id: m.id, to: m.to, body: m.body }));
+          if (flags["mark-sent"]) markOutboxSent(store.base, m.id);
+        }
+        console.error(`${rows.length} unsent${flags["mark-sent"] ? ", marked sent" : ""}`);
+        await settle(store);
+        process.exit(0);
+      }
       const store = await open(dataDir);
       const rows = listOutbox(store.base.doc(), { unsentOnly: !!flags["unsent"] });
       print(rows.map((m) => ({ id: m.id, to: m.to, queuedAt: m.queuedAt, sentAt: m.sentAt })));
       return;
+    }
+
+    case "jobs": {
+      const store = await openWithSavedNetwork(dataDir);
+      await settle(store);
+      if (subcommand === "expire") {
+        const report = expireStale(store.base);
+        print({
+          timedOutRequests: report.timedOutRequestIds.length,
+          timedOutSocialServiceRequests: report.timedOutSocialServiceRequestIds.length,
+        });
+      } else if (subcommand === "scrub-pii") {
+        const report = await scrubExpiredPii(store.base);
+        print(report);
+      } else if (subcommand === "website-data") {
+        const counts = openRequestCounts(store.base.doc());
+        const out = str(flags, "out");
+        if (out) {
+          await writeFile(out, JSON.stringify(counts, null, 2) + "\n");
+          print({ wrote: out, types: counts.counts.length });
+        } else {
+          print(counts);
+        }
+      } else {
+        throw new Error("usage: jobs expire | scrub-pii | website-data [--out file]");
+      }
+      // Linger so the mutation replicates to the relay before exit.
+      await settle(store);
+      process.exit(0);
     }
 
     case "sync": {
