@@ -488,3 +488,45 @@ class TestScrubReportAndIdempotency:
         assert second.social_service_requests_scrubbed == 0
         assert second.households_anonymized == 0
         assert second.submissions_scrubbed == 0
+
+
+class TestExpirationRegressions:
+    def test_past_dated_booking_does_not_exempt(
+        self,
+        session: Session,
+        make_household: HouseholdFactory,
+        make_request: RequestFactory,
+    ) -> None:
+        """A dangling Booked status from a distro whose no-show pass never ran
+        must not make requests immortal (or block anonymization)."""
+        dangling = make_household(
+            session,
+            appointment_status=AppointmentStatus.BOOKED,
+            appointment_date=FIXED_NOW.date() - timedelta(days=10),
+        )
+        stale = make_request(session, dangling, request_opened_at=days_ago(15))
+
+        report = expire_stale_requests(session, now=FIXED_NOW)
+
+        assert stale.id in report.timed_out_request_ids
+
+    def test_expiry_window_settings_override_is_honored(
+        self,
+        session: Session,
+        make_household: HouseholdFactory,
+        make_request: RequestFactory,
+        monkeypatch,
+    ) -> None:
+        """BAM_DEFAULT_EXPIRY_DAYS must actually drive the window and the
+        processing-date formula, not just sit in config."""
+        from bam.config import settings
+
+        monkeypatch.setattr(settings, "default_expiry_days", 7)
+        household = make_household(session)
+        request = make_request(session, household, request_opened_at=days_ago(8))
+
+        report = expire_stale_requests(session, now=FIXED_NOW)
+
+        assert request.id in report.timed_out_request_ids
+        session.refresh(request)
+        assert request.processing_date == FIXED_NOW.date() + timedelta(days=7)

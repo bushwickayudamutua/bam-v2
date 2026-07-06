@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from bam.models import AppointmentStatus, RequestStatus
 
@@ -27,6 +27,13 @@ class FormSubmissionIn(BaseModel):
     city_state: str | None = None
     zip_code: str | None = None
 
+    @field_validator("zip_code", mode="before")
+    @classmethod
+    def _coerce_zip(cls, value: object) -> object:
+        # Spec 4 types Zip Code as a number; we store strings (leading-zero
+        # zips) but accept numeric input rather than 422 a valid submission.
+        return str(value) if isinstance(value, int) else value
+
 
 class IntakeResult(BaseModel):
     submission_id: int
@@ -37,6 +44,7 @@ class IntakeResult(BaseModel):
     skipped_duplicate_types: list[str] = []
     unknown_types: list[str] = []
     phone_valid: bool
+    already_processed: bool = False
 
 
 class RequestOut(BaseModel):
@@ -112,6 +120,7 @@ class BlastReport(BaseModel):
     skipped_invalid: int = 0
     skipped_no_phone: int = 0
     not_sent_over_limit: int = 0
+    unknown_household_ids: list[int] = []
     messages: list[BlastMessage] = []
 
 

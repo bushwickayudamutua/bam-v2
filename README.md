@@ -74,7 +74,8 @@ endpoints (see `/docs` when serving), and CLI subcommands.
 ## SMS providers
 
 - **console** (default): logs messages instead of sending them; used for local
-  development, tests, and `bam blast --dry-run`.
+  development, tests, and `bam blast --dry-run` (which additionally persists
+  nothing, so a preview never disturbs the `Last Texted` recency filters).
 - **twilio**: set `BAM_SMS_PROVIDER=twilio` plus the three `TWILIO_*` variables
   below, and install the optional dependency: `pip install -e ".[twilio]"`.
 
@@ -102,6 +103,7 @@ All settings come from environment variables (`bam/config.py`):
 | `BAM_EXTENDED_EXPIRY_DAYS` | `30` | Pots & pans expiration window. |
 | `BAM_MAX_MISSED_APPOINTMENTS` | `2` | Missed appointments before open requests time out. |
 | `BAM_PII_RETENTION_DAYS` | `30` | Days of inactivity (with no open requests) before a household is anonymized. |
+| `BAM_LOCAL_TIMEZONE` | `America/New_York` | Timezone for business dates (last texted, fulfilled counts, processing dates); timestamps stay UTC. |
 | `BAM_WEBSITE_DATA_PATH` | `website_request_data.json` | Output path for the website request-count JSON. |
 
 ## Cron mapping
@@ -127,7 +129,7 @@ The spec's web-triggered `send_sms` function is `POST /outreach/blast` (or
 | `bam website-data` | Write open request counts to the website JSON (hourly cron). |
 | `bam scrub-pii` | Scrub expired PII (daily cron). |
 | `bam no-shows --date YYYY-MM-DD` | End-of-distro no-show pass for that date (spec 6.3). |
-| `bam blast --template "..." [--request-types --languages --limit --max-messages --exclude-texted-days --exclude-attended-days --dry-run]` | Build the outreach list and send the text blast (spec 6.2); `--dry-run` forces the console provider. |
+| `bam blast --template "..." [--request-types --languages --limit --max-messages --exclude-texted-days --exclude-attended-days --dry-run]` | Build the outreach list and send the text blast (spec 6.2); `--dry-run` previews via the console provider and persists nothing. |
 
 Every non-serve command prints a JSON report to stdout.
 

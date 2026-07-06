@@ -61,6 +61,13 @@ class Settings:
     # requests) its PII is retained before being anonymized.
     pii_retention_days: int = field(default_factory=lambda: _env_int("BAM_PII_RETENTION_DAYS", 30))
 
+    # Business dates (last texted, fulfilled counts, processing dates) are
+    # derived in this timezone so an evening distro in Brooklyn is not
+    # recorded under the next UTC day.
+    local_timezone: str = field(
+        default_factory=lambda: os.environ.get("BAM_LOCAL_TIMEZONE", "America/New_York")
+    )
+
     # Website request-count JSON output (spec 5: UpdateWebsiteRequestData)
     website_data_path: str = field(
         default_factory=lambda: os.environ.get(

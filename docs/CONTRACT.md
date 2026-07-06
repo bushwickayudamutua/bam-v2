@@ -23,6 +23,14 @@ Foundation files already exist and are authoritative: `bam/config.py`, `bam/db.p
 5. **Missed appointments** — `missed_appointment_count` increments per no-show, resets to 0 on check-in; at `settings.max_missed_appointments` (2) all the household's open goods+social requests time out.
 6. **Partial fulfillment (A1)** — simply don't mark the request delivered; there is no partial state.
 7. **Wrong number (A5)** — set `invalid_phone_number=True` and time out all open requests.
+8. **Booked exemption is date-bounded** — the expiration exemption applies only while `appointment_date >= today`; a dangling Booked from an unprocessed distro must not make requests immortal.
+9. **Idempotency** — re-processing a processed submission returns `already_processed=True` (no duplicates); fulfilling an already-Delivered request is a no-op (no re-count, no processing_date restamp). Invalid-phone households get `phone_hash = sha256(raw string)` so dedup and post-scrub reconnection work.
+10. **Fulfilled counts include social services** — deliveries of both kinds increment `FulfilledRequestCount`.
+11. **Business dates are local** — `last_texted`/`last_attended`/count dates/processing dates derive via `bam.models.local_date` (`BAM_LOCAL_TIMEZONE`, default America/New_York); raw timestamps stay UTC.
+12. **Expiry windows come from settings** — `request_types.expiry_days_for`/`default_expiry_days` resolve against `settings.default_expiry_days`/`extended_expiry_days`; never use the module constants directly for window math.
+13. **Privacy pass 1 also clears `internet_access`** on closed social-service requests past their processing date.
+14. **Dry-run blasts persist nothing** — `send_text_blast(dry_run=True)` builds the report but skips `last_texted` and rolls back. Unknown household ids in a blast are reported in `BlastReport.unknown_household_ids` (the blast continues; this is the one deliberate exception to the 404-on-unknown-id rule, since one stale id must not abort outreach to 239 others).
+15. **Error mapping is by exception type** — services raise `bam.errors.NotFoundError` (a `ValueError` subclass) for unknown ids; the API maps `NotFoundError` → 404 and other `ValueError` → 400, never by message substring.
 
 ## Modules to implement
 
@@ -30,7 +38,7 @@ Foundation files already exist and are authoritative: `bam/config.py`, `bam/db.p
 
 - `FormSubmissionIn`: name, phone_number, email, languages, request_types, furniture_items, bed_details, furniture_acknowledgement, kitchen_items, social_service_requests, internet_access, roof_accessible, notes, street_address, city_state, zip_code. All optional except `phone_number`; list fields default to [].
 - `IntakeResult`: submission_id, household_id, created_household (bool), created_request_ids, created_social_service_request_ids, skipped_duplicate_types, unknown_types, phone_valid (bool).
-- `HouseholdOut`, `RequestOut`, `SocialServiceRequestOut`, `CheckinView` (household + open requests + open social service requests), `BlastReport` (sent, skipped_invalid, skipped_no_phone, failed, results list), `OutreachCandidate`, `NoShowReport` (missed_household_ids, timed_out_household_ids), `ExpirationReport` (timed_out_request_ids, timed_out_social_service_request_ids), `ScrubReport` (households_anonymized, requests_scrubbed, submissions_scrubbed), `DistroIn/DistroOut`.
+- `HouseholdOut`, `RequestOut`, `SocialServiceRequestOut`, `CheckinView` (household + open requests + open social service requests), `BlastReport` (sent, failed, skipped_invalid, skipped_no_phone, not_sent_over_limit, unknown_household_ids, messages list), `OutreachCandidate`, `NoShowReport` (missed_household_ids, timed_out_household_ids), `ExpirationReport` (timed_out_request_ids, timed_out_social_service_request_ids), `ScrubReport` (households_anonymized, requests_scrubbed, submissions_scrubbed), `DistroIn/DistroOut`.
 
 ### `bam/services/intake.py` (spec 6.1)
 

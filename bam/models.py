@@ -12,21 +12,44 @@ Notes on deviations from the Airtable schema, chosen for a relational store:
   the hash so a re-request from the same phone reconnects to its history.
 - ``Household.missed_appointment_count`` makes the "timeout after 2nd missed
   appointment" rule explicit; it resets when the household attends.
+- Zip codes are stored as strings (Airtable declares "number") so
+  leading-zero zips survive; the intake schema coerces numeric input.
+- The Airtable legacy migration fields (``Legacy First/Last Date Submitted``,
+  ``Legacy Date Submitted``) are omitted: this is a fresh implementation, and
+  a V1 import should map the legacy date onto ``request_opened_at`` — the
+  spec's "Request Opened At = effective open date" formula — so expiration
+  and outreach ordering stay correct for migrated rows.
+- Timestamps are stored UTC; *business dates* (processing dates, last texted,
+  fulfilled counts) are derived via ``local_date`` in the configured local
+  timezone so an evening distro is not recorded under the next UTC day.
 """
 
 import datetime as dt
 from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import JSON, Column, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
-from bam.request_types import DEFAULT_EXPIRY_DAYS, expiry_days_for, label_for
+from bam.config import settings
+from bam.request_types import default_expiry_days, expiry_days_for, label_for
 
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def local_date(now: datetime | None = None) -> date:
+    """The business date for ``now`` in ``settings.local_timezone``.
+
+    Naive datetimes (e.g. loaded back from SQLite) are treated as UTC.
+    """
+    now = now or utcnow()
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    return now.astimezone(ZoneInfo(settings.local_timezone)).date()
 
 
 class RequestStatus(str, Enum):
@@ -201,7 +224,9 @@ def apply_status_change(
     Processing Date formula (spec section 4):
     - Delivered: +14 days after the status change (+30 for Pots & Pans)
     - Timeout: +14 days
-    Social service requests always use the 14-day window.
+    Social service requests always use the 14-day window. Windows come from
+    the settings-aware helpers so env overrides apply; the base date is the
+    local business date.
     """
     now = now or utcnow()
     request.status = status
@@ -211,10 +236,10 @@ def apply_status_change(
         days = (
             expiry_days_for(request.type)
             if isinstance(request, Request)
-            else DEFAULT_EXPIRY_DAYS
+            else default_expiry_days()
         )
-        request.processing_date = now.date() + timedelta(days=days)
+        request.processing_date = local_date(now) + timedelta(days=days)
     elif status == RequestStatus.TIMEOUT:
-        request.processing_date = now.date() + timedelta(days=DEFAULT_EXPIRY_DAYS)
+        request.processing_date = local_date(now) + timedelta(days=default_expiry_days())
     else:
         request.processing_date = None

@@ -7,12 +7,21 @@ category, and the auto-expiration window (14 days standard, 30 days for
 Pots & Pans — spec sections 2 and 4).
 
 ``normalize_type`` accepts either a key or any language segment of a label so
-intake payloads from any form language resolve to the same canonical key.
+intake payloads from any form language resolve to the same canonical key;
+``ITEM_ALIASES`` additionally maps the item-level names the current forms use
+(background section 5) onto their catalog type.
+
+The catalog's ``expiry_days`` values mark each type's expiration *tier*;
+``expiry_days_for``/``default_expiry_days`` resolve the tier against
+``settings`` so ``BAM_DEFAULT_EXPIRY_DAYS``/``BAM_EXTENDED_EXPIRY_DAYS``
+overrides take effect everywhere windows are computed.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+from bam.config import settings
 
 DEFAULT_EXPIRY_DAYS = 14
 EXTENDED_EXPIRY_DAYS = 30
@@ -76,15 +85,35 @@ SOCIAL_SERVICES: list[RequestType] = [
 ALL_TYPES: list[RequestType] = GOODS + SOCIAL_SERVICES
 BY_KEY: dict[str, RequestType] = {t.key: t for t in ALL_TYPES}
 
+#: Item-level names from the current intake forms (background section 5) that
+#: resolve to a broader catalog type. Item detail itself is preserved on the
+#: request notes / raw submission by the intake service.
+ITEM_ALIASES: dict[str, str] = {
+    "plates": "plates_cups_utensils",
+    "cups": "plates_cups_utensils",
+    "utensils": "plates_cups_utensils",
+    "sofa": "furniture",
+    "dresser": "furniture",
+    "desk": "furniture",
+    "coffee table": "furniture",
+    "chairs": "furniture",
+    "storage": "furniture",
+    "dining table": "furniture",
+    "fridge": "furniture",
+    "ac": "furniture",
+}
+
 _BY_LABEL_SEGMENT: dict[str, RequestType] = {}
 for _t in ALL_TYPES:
     _BY_LABEL_SEGMENT[_t.label.lower()] = _t
     for _segment in _t.label.split(" / "):
         _BY_LABEL_SEGMENT.setdefault(_segment.strip().lower(), _t)
+for _alias, _key in ITEM_ALIASES.items():
+    _BY_LABEL_SEGMENT.setdefault(_alias, BY_KEY[_key])
 
 
 def normalize_type(value: str) -> str | None:
-    """Resolve a key or any language segment of a label to the canonical key."""
+    """Resolve a key, label segment, or item alias to the canonical key."""
     if not value:
         return None
     candidate = value.strip()
@@ -103,9 +132,17 @@ def label_for(key: str) -> str:
     return rt.label if rt else key
 
 
+def default_expiry_days() -> int:
+    """The standard (settings-overridable) expiration window."""
+    return settings.default_expiry_days
+
+
 def expiry_days_for(key: str) -> int:
+    """Expiration window for a type, resolved against settings overrides."""
     rt = BY_KEY.get(key)
-    return rt.expiry_days if rt else DEFAULT_EXPIRY_DAYS
+    if rt is not None and rt.expiry_days == EXTENDED_EXPIRY_DAYS:
+        return settings.extended_expiry_days
+    return settings.default_expiry_days
 
 
 def is_social_service(key: str) -> bool:

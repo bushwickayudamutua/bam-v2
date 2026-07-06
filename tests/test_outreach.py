@@ -496,3 +496,58 @@ class TestRecordOutreachOutcome:
     def test_rejects_unknown_household(self, session: Session) -> None:
         with pytest.raises(ValueError):
             record_outreach_outcome(session, 999_999, "no_response_timeout", now=FIXED_NOW)
+
+
+class TestBlastRegressions:
+    def test_dry_run_does_not_persist_last_texted(
+        self,
+        session: Session,
+        make_household: HouseholdFactory,
+        make_request: RequestFactory,
+        sms: ConsoleSMSProvider,
+        no_sleep: RecordingSleeper,
+    ) -> None:
+        """A preview blast must not poison the recency filters of the real
+        send: last_texted stays untouched and nothing is committed."""
+        household = make_household(session)
+        make_request(session, household)
+
+        report = send_text_blast(
+            session,
+            [household.id],
+            "hi [FIRST_NAME]",
+            sms,
+            sleeper=no_sleep,
+            now=FIXED_NOW,
+            dry_run=True,
+        )
+
+        assert report.sent == 1  # the preview still reports what would happen
+        assert len(sms.sent) == 1
+        session.expire_all()
+        refreshed = session.get(Household, household.id)
+        assert refreshed.last_texted is None
+
+    def test_unknown_household_ids_are_reported(
+        self,
+        session: Session,
+        make_household: HouseholdFactory,
+        make_request: RequestFactory,
+        sms: ConsoleSMSProvider,
+        no_sleep: RecordingSleeper,
+    ) -> None:
+        """A stale id must be visible in the report, not silently dropped."""
+        household = make_household(session)
+        make_request(session, household)
+
+        report = send_text_blast(
+            session,
+            [999_999, household.id],
+            "hi",
+            sms,
+            sleeper=no_sleep,
+            now=FIXED_NOW,
+        )
+
+        assert report.unknown_household_ids == [999_999]
+        assert report.sent == 1

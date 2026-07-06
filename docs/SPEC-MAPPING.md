@@ -100,3 +100,60 @@ in section 7 intends.
 Sets `invalid_phone_number=True` on the household and times out all of its
 open requests. The household is thereafter excluded from outreach lists and
 blasts until a new intake submission arrives with a valid number.
+
+### 8. A booking only exempts from expiration while it is current
+
+The booked-household exemption (decision 3) applies only when
+`appointment_date` is today or later. A dangling `Booked` status from a
+distro whose no-show pass never ran would otherwise make the household's
+requests immortal — and, because open requests block anonymization, retain
+its PII indefinitely.
+
+### 9. Idempotency guards
+
+Re-processing an already-processed form submission returns
+`already_processed=True` instead of duplicating households/requests, and
+fulfilling an already-`Delivered` request (double-click, retried POST) is a
+no-op: it is not re-counted in `Fulfilled Request Count` and its
+`processing_date` is not pushed out.
+
+### 10. Fulfilled counts include social services
+
+Spec 2's goal is "track fulfilled vs outstanding requests" and the open-count
+metrics include social service types, so deliveries of social service
+requests increment `Fulfilled Request Count` too — otherwise a delivered
+service would vanish from all metrics.
+
+### 11. Business dates are local (America/New_York by default)
+
+Timestamps are stored in UTC, but `last_texted`, `last_attended`, fulfilled
+count dates, and processing dates are derived in `BAM_LOCAL_TIMEZONE` so an
+evening distro in Brooklyn is not recorded under the next UTC day.
+
+### 12. Schema type deviations
+
+- **Zip codes** are stored as strings (the spec's Airtable schema says
+  "number") so leading-zero zips survive; numeric input is coerced, not
+  rejected.
+- **Legacy migration fields** (`Legacy First/Last Date Submitted`, `Legacy
+  Date Submitted`) are omitted — this is a fresh implementation. A V1 import
+  should map the legacy date onto `request_opened_at` (the spec's "effective
+  open date" formula) so expiration windows and outreach ordering stay
+  correct for migrated rows.
+- **Item-level form values** (Plates, Sofa, Dresser, ...) resolve to their
+  catalog type via `ITEM_ALIASES`; furniture item detail is preserved on the
+  request notes, bed details likewise.
+
+### 13. Privacy scrub also clears `internet_access`
+
+On closed social-service requests past their processing date, the scrub
+clears `internet_access` along with address fields and notes: a household's
+internet situation is retained only while the request is actionable.
+
+### 14. Dry-run blasts persist nothing
+
+`bam blast --dry-run` (and `send_text_blast(dry_run=True)`) previews the
+full report but writes nothing — in particular `last_texted` stays
+untouched, so the real send's recency filters still match. Unknown household
+ids passed to a blast are reported in `unknown_household_ids` rather than
+aborting outreach to the valid ones.

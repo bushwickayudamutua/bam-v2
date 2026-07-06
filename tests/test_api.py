@@ -330,3 +330,11 @@ def test_outreach_outcome_error_mapping(client):
     )
     assert response.status_code == 200
     assert response.json()["invalid_phone_number"] is True
+
+    # An invalid outcome whose text happens to contain "not found" is still a
+    # 400: error mapping is by exception type, not message substring.
+    response = client.post(
+        f"/households/{household_id}/outreach-outcome",
+        json={"outcome": "number not found"},
+    )
+    assert response.status_code == 400

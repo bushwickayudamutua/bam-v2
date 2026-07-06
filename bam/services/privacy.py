@@ -26,6 +26,7 @@ from bam.models import (
     Request,
     RequestStatus,
     SocialServiceRequest,
+    local_date,
     utcnow,
 )
 from bam.schemas import ScrubReport
@@ -72,11 +73,13 @@ def scrub_expired_pii(
     cutoff = now - timedelta(days=retention_days)
     report = ScrubReport()
 
+    today = local_date(now)
+
     # Pass 1: closed requests past their processing date lose address + notes.
     for request in session.exec(
         select(Request).where(
             col(Request.status).in_(_CLOSED_STATUSES),
-            col(Request.processing_date) < now.date(),
+            col(Request.processing_date) < today,
         )
     ).all():
         if _null_fields(request, _REQUEST_PII_FIELDS):
@@ -87,7 +90,7 @@ def scrub_expired_pii(
     for social_request in session.exec(
         select(SocialServiceRequest).where(
             col(SocialServiceRequest.status).in_(_CLOSED_STATUSES),
-            col(SocialServiceRequest.processing_date) < now.date(),
+            col(SocialServiceRequest.processing_date) < today,
         )
     ).all():
         changed = _null_fields(social_request, _SOCIAL_REQUEST_PII_FIELDS)

@@ -91,8 +91,10 @@ def cmd_no_shows(args: argparse.Namespace) -> None:
 def cmd_blast(args: argparse.Namespace) -> None:
     """Build the outreach list and send the text blast (spec 6.2).
 
-    ``--dry-run`` forces the console provider so no real messages go out
-    even when Twilio is configured.
+    ``--dry-run`` previews the blast: the console provider is used so no
+    real messages go out, and nothing is persisted (in particular
+    ``last_texted`` stays untouched so the real send's recency filters
+    still match).
     """
     init_db()
     provider = ConsoleSMSProvider() if args.dry_run else get_provider(settings)
@@ -111,6 +113,7 @@ def cmd_blast(args: argparse.Namespace) -> None:
             args.template,
             provider,
             max_messages=args.max_messages,
+            dry_run=args.dry_run,
         )
     _print_json(
         {
@@ -209,7 +212,7 @@ def build_parser() -> argparse.ArgumentParser:
     blast.add_argument(
         "--dry-run",
         action="store_true",
-        help="Use the console SMS provider even if Twilio is configured.",
+        help="Preview only: console SMS provider, and no state (Last Texted) is persisted.",
     )
     blast.set_defaults(func=cmd_blast)
 

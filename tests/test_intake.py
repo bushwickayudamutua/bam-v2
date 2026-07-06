@@ -329,7 +329,8 @@ def test_social_service_dedup_skips_open_duplicate(session: Session) -> None:
 
 def test_invalid_phone_household_creation(session: Session) -> None:
     """CONTRACT intake bullet 2: invalid phone -> phone_number=None,
-    invalid_phone_number=True, no phone_hash."""
+    invalid_phone_number=True; the raw string is hashed so dedup and
+    post-scrub reconnection stay possible."""
     result = intake.intake_and_process(
         session,
         FormSubmissionIn(phone_number=INVALID_PHONE, request_types=["soap"]),
@@ -341,7 +342,7 @@ def test_invalid_phone_household_creation(session: Session) -> None:
 
     household = session.get(Household, result.household_id)
     assert household.invalid_phone_number is True
-    assert household.phone_hash is None
+    assert household.phone_hash == hash_phone(INVALID_PHONE)
     assert household.phone_number is None
 
 
@@ -453,3 +454,132 @@ def test_process_pending_processes_only_unprocessed_rows(session: Session) -> No
     assert as_utc(untouched.processed_at) == days_ago(1)  # not reprocessed
 
     assert intake.process_pending(session, now=FIXED_NOW) == []
+
+
+def test_reprocessing_a_submission_is_idempotent(session: Session) -> None:
+    """A re-run of process_submission must not duplicate anything."""
+    submission = intake.submit_form(
+        session, FormSubmissionIn(phone_number=VALID_PHONE, request_types=["soap"])
+    )
+    first = intake.process_submission(session, submission.id, now=FIXED_NOW)
+    second = intake.process_submission(session, submission.id, now=FIXED_NOW)
+
+    assert second.already_processed is True
+    assert second.household_id == first.household_id
+    assert second.created_request_ids == []
+    assert household_count(session) == 1
+    assert len(session.exec(select(Request)).all()) == 1
+
+
+def test_reprocessing_invalid_phone_submission_is_idempotent(session: Session) -> None:
+    """Invalid-phone submissions were the corruption case: a second run used
+    to create a duplicate household plus a dangling duplicate Open request."""
+    submission = intake.submit_form(
+        session, FormSubmissionIn(phone_number=INVALID_PHONE, request_types=["soap"])
+    )
+    intake.process_submission(session, submission.id, now=FIXED_NOW)
+    second = intake.process_submission(session, submission.id, now=FIXED_NOW)
+
+    assert second.already_processed is True
+    assert household_count(session) == 1
+    assert len(session.exec(select(Request)).all()) == 1
+
+
+def test_social_service_type_in_goods_field_is_reported_not_misfiled(
+    session: Session,
+) -> None:
+    """Spec 6.1 diagram routes social services to their own table; a social
+    type in a goods field is malformed input, not a goods Request."""
+    result = intake.intake_and_process(
+        session,
+        FormSubmissionIn(
+            phone_number=VALID_PHONE, request_types=["Vivienda / Housing / 住房"]
+        ),
+        now=FIXED_NOW,
+    )
+
+    assert result.created_request_ids == []
+    assert result.unknown_types == ["Vivienda / Housing / 住房"]
+    assert session.exec(select(Request)).all() == []
+    assert session.exec(select(SocialServiceRequest)).all() == []
+
+
+def test_invalid_email_on_resubmission_keeps_last_good_email(session: Session) -> None:
+    """A typo in a re-request must not erase working contact info."""
+    intake.intake_and_process(
+        session,
+        FormSubmissionIn(
+            phone_number=VALID_PHONE, email="good@example.com", request_types=["soap"]
+        ),
+        now=days_ago(1),
+    )
+    result = intake.intake_and_process(
+        session,
+        FormSubmissionIn(
+            phone_number=VALID_PHONE, email="bad@@nope", request_types=["pads"]
+        ),
+        now=FIXED_NOW,
+    )
+
+    household = session.get(Household, result.household_id)
+    assert household.email == "good@example.com"
+    assert household.email_error
+
+
+def test_invalid_phone_household_reconnects_after_anonymization(
+    session: Session,
+) -> None:
+    """The raw-string phone_hash survives the PII scrub, so a re-request from
+    the same invalid phone reconnects instead of duplicating the household."""
+    first = intake.intake_and_process(
+        session,
+        FormSubmissionIn(phone_number=INVALID_PHONE, request_types=["soap"]),
+        now=days_ago(3),
+    )
+    household = session.get(Household, first.household_id)
+    household.name = None
+    household.anonymized_at = FIXED_NOW
+    session.add(household)
+    session.commit()
+
+    second = intake.intake_and_process(
+        session,
+        FormSubmissionIn(
+            phone_number=INVALID_PHONE, name="Rosa", request_types=["pads"]
+        ),
+        now=FIXED_NOW,
+    )
+
+    assert second.created_household is False
+    assert second.household_id == first.household_id
+    restored = session.get(Household, first.household_id)
+    assert restored.anonymized_at is None
+    assert restored.name == "Rosa"
+
+
+def test_numeric_zip_code_is_coerced() -> None:
+    """Spec 4 types Zip Code as a number; numeric input must not 422."""
+    payload = FormSubmissionIn(phone_number=VALID_PHONE, zip_code=11221)
+    assert payload.zip_code == "11221"
+
+
+def test_item_level_names_resolve_and_furniture_detail_is_kept(
+    session: Session,
+) -> None:
+    """Background section 5 item names (Plates, Sofa, ...) resolve via
+    ITEM_ALIASES, and furniture detail lands on the request notes."""
+    result = intake.intake_and_process(
+        session,
+        FormSubmissionIn(
+            phone_number=VALID_PHONE,
+            kitchen_items=["Plates"],
+            furniture_items=["Sofa", "Dresser"],
+        ),
+        now=FIXED_NOW,
+    )
+
+    assert result.unknown_types == []
+    requests = session.exec(select(Request)).all()
+    assert sorted(r.type for r in requests) == ["furniture", "plates_cups_utensils"]
+    furniture = next(r for r in requests if r.type == "furniture")
+    assert "Sofa; Dresser" in (furniture.notes or "")

@@ -15,12 +15,14 @@ from typing import Callable, Sequence
 from sqlmodel import Session, col, or_, select
 
 from bam.config import settings
+from bam.errors import NotFoundError
 from bam.models import (
     AppointmentStatus,
     Household,
     Request,
     RequestStatus,
     apply_status_change,
+    local_date,
     utcnow,
 )
 from bam.request_types import normalize_type
@@ -59,7 +61,7 @@ def build_outreach_list(
     Date of Oldest Fulfillable Request ascending, then truncated to ``limit``.
     """
     now = now or utcnow()
-    today = now.date()
+    today = local_date(now)
 
     type_filter: list[str] | None = None
     if request_types:
@@ -130,6 +132,7 @@ def send_text_blast(
     max_messages: int | None = None,
     sleeper: Callable[[float], None] = time.sleep,
     now: datetime | None = None,
+    dry_run: bool = False,
 ) -> BlastReport:
     """Send a templated text blast to households (spec 6.2 sequence diagram).
 
@@ -142,7 +145,14 @@ def send_text_blast(
     ``last_texted`` to today. Rate limit: after every
     ``settings.sms_batch_size`` attempted sends the ``sleeper`` pauses for
     ``settings.sms_batch_pause_seconds`` (spec: 30 msgs then 30s), never
-    after the final attempt. Unknown household ids are ignored.
+    after the final attempt. Unknown household ids are reported in
+    ``unknown_household_ids`` (the blast proceeds — one stale id must not
+    abort outreach to 239 other households).
+
+    ``dry_run=True`` previews the blast: the report is built as usual but
+    nothing is persisted — the spec ties "Last Texted = TODAY()" to an SMS
+    actually delivered, so a preview must not poison the recency filters of
+    the real send.
     """
     now = now or utcnow()
     cap = settings.sms_max_messages if max_messages is None else max_messages
@@ -154,6 +164,7 @@ def send_text_blast(
     for household_id in household_ids:
         household = session.get(Household, household_id)
         if household is None:
+            report.unknown_household_ids.append(household_id)
             continue
         if not household.phone_number:
             report.skipped_no_phone += 1
@@ -187,15 +198,19 @@ def send_text_blast(
         )
         if result.ok:
             report.sent += 1
-            household.last_texted = now.date()
-            household.updated_at = now
-            session.add(household)
+            if not dry_run:
+                household.last_texted = local_date(now)
+                household.updated_at = now
+                session.add(household)
         else:
             report.failed += 1
         if batch_size > 0 and attempted % batch_size == 0:
             pause_pending = True
 
-    session.commit()
+    if dry_run:
+        session.rollback()
+    else:
+        session.commit()
     return report
 
 
@@ -210,7 +225,7 @@ def confirm_appointment(
     now = now or utcnow()
     household = session.get(Household, household_id)
     if household is None:
-        raise ValueError(f"Unknown household id: {household_id}")
+        raise NotFoundError(f"Unknown household id: {household_id}")
     household.appointment_date = appointment_date
     household.appointment_time = appointment_time
     household.appointment_status = AppointmentStatus.BOOKED
@@ -240,7 +255,7 @@ def record_outreach_outcome(
         raise ValueError(f"Unknown outreach outcome: {outcome!r}")
     household = session.get(Household, household_id)
     if household is None:
-        raise ValueError(f"Unknown household id: {household_id}")
+        raise NotFoundError(f"Unknown household id: {household_id}")
 
     for request in household.requests:
         if request.status == RequestStatus.OPEN:

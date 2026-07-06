@@ -292,3 +292,54 @@ class TestProcessNoShows:
         assert other_date.missed_appointment_count == 1
         assert checked_in_request.status == RequestStatus.OPEN
         assert other_date_request.status == RequestStatus.OPEN
+
+
+class TestFulfillmentIdempotency:
+    def test_duplicate_ids_in_one_call_count_once(
+        self, session, make_household, make_request
+    ) -> None:
+        household = make_household(session)
+        request = make_request(session, household)
+
+        fulfill_requests(session, request_ids=[request.id, request.id], now=FIXED_NOW)
+
+        rows = session.exec(select(FulfilledRequestCount)).all()
+        assert len(rows) == 1
+        assert rows[0].count == 1
+
+    def test_repeat_call_does_not_recount_or_restamp(
+        self, session, make_household, make_request
+    ) -> None:
+        """A double-click / retried POST must not inflate the metrics or push
+        processing_date (and thereby the PII scrub) further out."""
+        household = make_household(session)
+        request = make_request(session, household)
+
+        fulfill_requests(session, request_ids=[request.id], now=FIXED_NOW)
+        first_processing = session.get(Request, request.id).processing_date
+
+        fulfill_requests(
+            session, request_ids=[request.id], now=FIXED_NOW + timedelta(days=1)
+        )
+
+        rows = session.exec(select(FulfilledRequestCount)).all()
+        assert len(rows) == 1
+        assert rows[0].count == 1
+        assert session.get(Request, request.id).processing_date == first_processing
+
+    def test_social_service_fulfillment_is_counted(
+        self, session, make_household
+    ) -> None:
+        """Spec 2: track fulfilled vs outstanding — social services included."""
+        household = make_household(session)
+        social = make_social_request(session, household, type="housing")
+
+        fulfill_requests(session, social_service_request_ids=[social.id], now=FIXED_NOW)
+
+        row = session.exec(
+            select(FulfilledRequestCount).where(
+                FulfilledRequestCount.request_type == "housing"
+            )
+        ).one()
+        assert row.count == 1
+        assert row.date == TODAY

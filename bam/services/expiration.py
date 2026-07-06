@@ -19,9 +19,10 @@ from bam.models import (
     RequestStatus,
     SocialServiceRequest,
     apply_status_change,
+    local_date,
     utcnow,
 )
-from bam.request_types import DEFAULT_EXPIRY_DAYS, expiry_days_for
+from bam.request_types import default_expiry_days, expiry_days_for
 from bam.schemas import ExpirationReport
 
 
@@ -43,10 +44,14 @@ def expire_stale_requests(
     now = now or utcnow()
     report = ExpirationReport()
 
+    # Only a booking for today or later exempts a household: a dangling
+    # Booked status from a distro whose no-show pass never ran must not make
+    # its requests immortal (and thereby block PII anonymization).
     booked_household_ids = set(
         session.exec(
             select(Household.id).where(
-                Household.appointment_status == AppointmentStatus.BOOKED
+                Household.appointment_status == AppointmentStatus.BOOKED,
+                Household.appointment_date >= local_date(now),
             )
         ).all()
     )
@@ -62,7 +67,7 @@ def expire_stale_requests(
             session.add(request)
             report.timed_out_request_ids.append(request.id)
 
-    social_window = timedelta(days=DEFAULT_EXPIRY_DAYS)
+    social_window = timedelta(days=default_expiry_days())
     for social_request in session.exec(
         select(SocialServiceRequest).where(
             SocialServiceRequest.status == RequestStatus.OPEN

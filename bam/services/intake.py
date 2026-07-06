@@ -15,6 +15,7 @@ from datetime import datetime
 
 from sqlmodel import Session, col, select
 
+from bam.errors import NotFoundError
 from bam.models import (
     FormSubmission,
     Household,
@@ -73,10 +74,21 @@ def process_submission(
     now = now or utcnow()
     submission = session.get(FormSubmission, submission_id)
     if submission is None:
-        raise ValueError(f"FormSubmission {submission_id} not found")
+        raise NotFoundError(f"FormSubmission {submission_id} not found")
+    if submission.processed_at is not None and submission.household_id is not None:
+        # Idempotency guard: re-processing (an operator re-run, a retried
+        # request) must not create duplicate households or requests.
+        return IntakeResult(
+            submission_id=submission_id,
+            household_id=submission.household_id,
+            created_household=False,
+            phone_valid=validate_phone(submission.phone_number).valid,
+            already_processed=True,
+        )
 
     phone = validate_phone(submission.phone_number)
     email = validate_email_address(submission.email)
+    raw_phone = (submission.phone_number or "").strip()
 
     household: Household | None = None
     if phone.valid and phone.normalized:
@@ -93,27 +105,39 @@ def process_submission(
                 household.phone_number = phone.normalized
                 household.anonymized_at = None
     else:
-        # Invalid phone: the household stores no phone, so dedup falls back to
+        # Invalid phone: the household stores no phone. Dedup matches the
+        # hash of the raw string (set at creation, preserved by the PII
+        # scrub so reconnection survives anonymization), then falls back to
         # an exact raw-string match against prior submissions' phone
         # (CONTRACT intake bullet 2).
-        prior = session.exec(
-            select(FormSubmission)
-            .where(
-                FormSubmission.phone_number == submission.phone_number,
-                col(FormSubmission.household_id).is_not(None),
-                FormSubmission.id != submission.id,
-            )
-            .order_by(col(FormSubmission.id))
-        ).first()
-        if prior is not None:
-            household = session.get(Household, prior.household_id)
+        if raw_phone:
+            household = session.exec(
+                select(Household).where(Household.phone_hash == hash_phone(raw_phone))
+            ).first()
+            if household is not None:
+                household.anonymized_at = None
+        if household is None:
+            prior = session.exec(
+                select(FormSubmission)
+                .where(
+                    FormSubmission.phone_number == submission.phone_number,
+                    col(FormSubmission.household_id).is_not(None),
+                    FormSubmission.id != submission.id,
+                )
+                .order_by(col(FormSubmission.id))
+            ).first()
+            if prior is not None:
+                household = session.get(Household, prior.household_id)
 
     created_household = household is None
     if household is None:
+        # Invalid phones store no phone_number but do get a hash of the raw
+        # string so dedup and post-scrub reconnection stay possible.
+        hash_source = phone.normalized if phone.valid else (raw_phone or None)
         household = Household(
             name=submission.name,
             phone_number=phone.normalized if phone.valid else None,
-            phone_hash=hash_phone(phone.normalized) if phone.normalized else None,
+            phone_hash=hash_phone(hash_source) if hash_source else None,
             invalid_phone_number=not phone.valid,
             intl_phone_number=phone.international,
             email=email.normalized,
@@ -126,8 +150,11 @@ def process_submission(
         if submission.name:
             household.name = submission.name
         if submission.email:
-            household.email = email.normalized
+            # A typo in a re-request must not erase the last known-good
+            # email; record the error and keep the old address.
             household.email_error = email.error
+            if email.normalized:
+                household.email = email.normalized
         merged = list(household.languages)
         for language in submission.languages:
             if language not in merged:
@@ -160,7 +187,10 @@ def process_submission(
         *submission.furniture_items,
     ]:
         key = normalize_type(value)
-        if key is None:
+        # Social-service types belong in the Social Service Requests table;
+        # one appearing in a goods field is malformed input and is reported
+        # rather than silently landing in the wrong table (spec 6.1 diagram).
+        if key is None or is_social_service(key):
             _append_unique(result.unknown_types, value)
         elif key not in goods_keys:
             goods_keys.append(key)
@@ -183,6 +213,12 @@ def process_submission(
             request.city_state = submission.city_state
             request.zip_code = submission.zip_code
             request.address = address
+            # Keep item-level detail (Sofa, Dresser, ...) with the request so
+            # the furniture team sees what was asked for, not just the type.
+            if key == "furniture" and submission.furniture_items:
+                request.notes = _append_note(
+                    request.notes, "; ".join(submission.furniture_items)
+                )
         if key in BED_DETAIL_TYPES and submission.bed_details:
             request.notes = _append_note(request.notes, "; ".join(submission.bed_details))
         session.add(request)

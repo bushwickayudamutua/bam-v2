@@ -13,6 +13,7 @@ from datetime import date, datetime
 from sqlmodel import Session, select
 
 from bam.config import settings
+from bam.errors import NotFoundError
 from bam.models import (
     AppointmentStatus,
     Household,
@@ -20,6 +21,7 @@ from bam.models import (
     RequestStatus,
     SocialServiceRequest,
     apply_status_change,
+    local_date,
     utcnow,
 )
 from bam.schemas import (
@@ -78,9 +80,9 @@ def check_in(session: Session, household_id: int, now: datetime | None = None) -
     now = now or utcnow()
     household = session.get(Household, household_id)
     if household is None:
-        raise ValueError(f"Unknown household id {household_id}")
+        raise NotFoundError(f"Unknown household id {household_id}")
     household.appointment_status = AppointmentStatus.CHECKED_IN
-    household.last_attended = now.date()
+    household.last_attended = local_date(now)
     household.missed_appointment_count = 0
     household.updated_at = now
     session.add(household)
@@ -97,38 +99,45 @@ def fulfill_requests(
 ) -> list[Request | SocialServiceRequest]:
     """Mark requests Delivered (6.3 step 4) and record fulfilled counts.
 
-    All ids are resolved before any mutation; unknown ids raise ``ValueError``.
-    Returns the updated objects, goods requests first.
+    All ids are resolved before any mutation; unknown ids raise
+    ``NotFoundError``. Idempotent: duplicate ids within a call and requests
+    that are already Delivered (a double-click, a retried POST) are returned
+    unchanged without re-counting or re-stamping ``processing_date``. Both
+    goods and social-service deliveries feed the Fulfilled Request Count
+    (spec 2: track fulfilled vs outstanding requests). Returns the resolved
+    objects, goods requests first.
     """
     now = now or utcnow()
     requests: list[Request] = []
     missing: list[str] = []
-    for request_id in request_ids:
+    for request_id in dict.fromkeys(request_ids):
         request = session.get(Request, request_id)
         if request is None:
             missing.append(f"request {request_id}")
         else:
             requests.append(request)
     social_requests: list[SocialServiceRequest] = []
-    for social_id in social_service_request_ids:
+    for social_id in dict.fromkeys(social_service_request_ids):
         social = session.get(SocialServiceRequest, social_id)
         if social is None:
             missing.append(f"social service request {social_id}")
         else:
             social_requests.append(social)
     if missing:
-        raise ValueError(f"Unknown ids: {', '.join(missing)}")
+        raise NotFoundError(f"Unknown ids: {', '.join(missing)}")
 
-    updated: list[Request | SocialServiceRequest] = [*requests, *social_requests]
-    for obj in updated:
+    resolved: list[Request | SocialServiceRequest] = [*requests, *social_requests]
+    on_date = local_date(now)
+    for obj in resolved:
+        if obj.status == RequestStatus.DELIVERED:
+            continue
         apply_status_change(obj, RequestStatus.DELIVERED, now=now)
         session.add(obj)
-    for request in requests:
-        increment_fulfilled_count(session, now.date(), request.type, commit=False)
+        increment_fulfilled_count(session, on_date, obj.type, commit=False)
     session.commit()
-    for obj in updated:
+    for obj in resolved:
         session.refresh(obj)
-    return updated
+    return resolved
 
 
 def process_no_shows(
