@@ -31,8 +31,11 @@ pip install -e ".[dev]"
 
 pytest              # run the test suite
 bam init-db         # create tables (SQLite bam.db by default)
-bam serve           # API on http://127.0.0.1:8000 (docs at /docs)
+bam serve           # console at http://127.0.0.1:8000/app/ , API docs at /docs
 ```
+
+Then open **http://127.0.0.1:8000/app/** for the operator console (see below);
+`/` redirects there.
 
 Submit an intake form (spec 6.1) and look the household up by phone (spec 6.3):
 
@@ -68,8 +71,26 @@ same key (`bam/request_types.py`).
 | Privacy | 2 (goals) | Scrubs address/notes from closed requests past their processing date, anonymizes inactive households (keeping only the phone hash), clears PII from old processed submissions. |
 | Metrics | 5 | Open request counts per type published as website JSON (`UpdateWebsiteRequestData`); fulfilled counts per (date, type). |
 
-All flows are exposed three ways: service functions in `bam/services/`, HTTP
-endpoints (see `/docs` when serving), and CLI subcommands.
+All flows are exposed four ways: the web console (below), service functions in
+`bam/services/`, HTTP endpoints (see `/docs` when serving), and CLI subcommands.
+
+## Web console
+
+`bam serve` also serves an operator console at **`/app/`** (`/` redirects
+there). It is plain HTML/CSS/vanilla JS served straight from `bam/web/` by
+the same FastAPI app — **no build step, no bundler, no CDN**, so it runs fully
+offline and self-hosted, and it talks to the same JSON API documented at
+`/docs`. It is mobile-first (bottom nav on phones, left rail on wide screens),
+for use on a volunteer's phone at a distribution. Six views:
+
+| View | Spec | What you can do |
+|---|---|---|
+| Check-in | 6.3 | Look a household up by phone, see its open goods + social service requests, check the household in, mark selected requests delivered. |
+| Intake | 6.1 | Submit an assistance request form (multi-language, goods + social services). |
+| Outreach | 6.2 / A4–A6 | Build a filtered outreach list, send the templated text blast, book appointments, record phone-outreach outcomes. |
+| Distros | 4 / 6.3 | Create/list distributions and run the end-of-distro no-show pass (guarded confirm). |
+| Dashboard | 5 | Live open-request counts by type; publish the website JSON. |
+| Admin | 5 / privacy | Run the cron jobs — expire, publish website data, and scrub PII (destructive; two-step confirm). |
 
 ## SMS providers
 

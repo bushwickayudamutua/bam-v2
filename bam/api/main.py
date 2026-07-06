@@ -8,9 +8,12 @@ normal server startup, where the engine may be configured later.
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from bam.api.routes import checkin, distros, intake, jobs, metrics, outreach
 from bam.db import init_db
@@ -32,6 +35,16 @@ def create_app() -> FastAPI:
     app.include_router(distros.router)
     app.include_router(jobs.router)
     app.include_router(metrics.router)
+
+    # Serve the operator console. Mounted LAST so it never shadows API routes;
+    # "/" redirects into the mounted app.
+    web_dir = Path(__file__).resolve().parent.parent / "web"
+
+    @app.get("/", include_in_schema=False)
+    def _root() -> RedirectResponse:
+        return RedirectResponse("/app/")
+
+    app.mount("/app", StaticFiles(directory=str(web_dir), html=True), name="web")
     return app
 
 

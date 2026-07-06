@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#b4531f" />
+    <title>BAM Operator Console</title>
+    <link rel="stylesheet" href="/app/styles.css" />
+  </head>
+  <body>
+    <!-- Top app bar -->
+    <header class="app-bar">
+      <span class="app-bar__logo" aria-hidden="true">🤝</span>
+      <h1 class="app-bar__title">BAM Operator Console</h1>
+      <span class="app-bar__view" id="app-bar-view" aria-live="polite"></span>
+    </header>
+
+    <div class="app-layout">
+      <!-- Nav: bottom bar on mobile, left rail on desktop. Built by app.js. -->
+      <nav class="nav" id="app-nav" aria-label="Primary"></nav>
+
+      <!-- View container -->
+      <main id="app-main" aria-live="polite"></main>
+    </div>
+
+    <!-- Framework first (order-independent namespace init), then views. -->
+    <script src="/app/api.js"></script>
+    <script src="/app/app.js"></script>
+
+    <!-- Views self-register on load; script order sets nav order. -->
+    <script src="/app/views/checkin.js"></script>
+    <script src="/app/views/dashboard.js"></script>
+    <script src="/app/views/intake.js"></script>
+    <script src="/app/views/outreach.js"></script>
+    <script src="/app/views/distros.js"></script>
+    <script src="/app/views/admin.js"></script>
+
+    <!-- Boot -->
+    <script>
+      BAM.start();
+    </script>
+  </body>
+</html>
