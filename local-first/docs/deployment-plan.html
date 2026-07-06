@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BAM local-first — Deployment Plan</title>
+<style>
+  :root{
+    --bg:#faf4ec; --surface:#fffdf9; --ink:#2b2320; --muted:#7a6f66;
+    --brand:#b4531f; --brand-ink:#fff; --brand-soft:#f3ddcb; --brand-deep:#8f3d13;
+    --ok:#2f7d4f; --warn:#9a6b0b; --danger:#a23b2d; --border:#e6d8c8;
+    --code-bg:#2b2320; --code-ink:#f3e9dd; --code-cap:#caa98f;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--bg)}
+  #deck{height:100vh;width:100vw;overflow:hidden;position:relative}
+  .slide{position:absolute;inset:0;display:none;flex-direction:column;justify-content:center;padding:6vh 8vw;overflow:auto}
+  .slide.active{display:flex}
+  .slide h1{font-size:clamp(28px,5vw,52px);margin:0 0 .35em;line-height:1.06}
+  .slide h2{font-size:clamp(22px,3.4vw,36px);margin:0 0 .45em;color:var(--brand);line-height:1.1}
+  .slide .subhead{font-size:clamp(15px,1.9vw,21px);color:var(--muted);margin:-.15em 0 1em;max-width:64ch}
+  .slide ul,.slide ol{font-size:clamp(15px,1.85vw,22px);line-height:1.5;margin:.2em 0;padding-left:1.15em;max-width:66ch}
+  .slide ul ul{font-size:.9em;margin:.15em 0}
+  .slide li{margin:.32em 0}
+  code{font-family:"SF Mono",SFMono-Regular,Menlo,Consolas,monospace}
+  .slide li code,.slide p code,.slide td code,.subhead code{background:var(--brand-soft);color:#7a2f10;padding:.03em .35em;border-radius:6px;font-size:.88em}
+  pre{background:var(--code-bg);color:var(--code-ink);padding:1em 1.2em;border-radius:var(--radius);overflow:auto;font-size:clamp(12px,1.35vw,16px);line-height:1.5;max-width:100%;margin:.5em 0}
+  pre .cap{display:block;color:var(--code-cap);font-size:.82em;margin-bottom:.6em;font-family:inherit}
+  pre code{color:inherit;background:none;padding:0}
+  table{border-collapse:collapse;font-size:clamp(13px,1.55vw,18px);margin:.5em 0;max-width:100%}
+  th,td{border:1px solid var(--border);padding:.4em .7em;text-align:left;vertical-align:top;background:var(--surface)}
+  th{background:var(--brand-soft);color:#5c2a12}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:2em;align-items:start}
+  @media (max-width:820px){.cols{grid-template-columns:1fr}}
+  .note{margin-top:1.1em;font-size:clamp(13px,1.5vw,16px);color:var(--muted);border-left:3px solid var(--brand);padding-left:.8em;max-width:66ch}
+  .note b{color:var(--danger)}
+  .badge{display:inline-block;background:var(--brand-soft);color:#7a2f10;border-radius:999px;padding:.18em .8em;font-size:clamp(12px,1.4vw,15px);margin:.2em .35em .2em 0}
+  .divider{background:linear-gradient(135deg,var(--brand),var(--brand-deep));color:#fff;justify-content:center}
+  .divider h1{color:#fff;position:relative;z-index:1}
+  .divider .subhead{color:#f3ddcb}
+  .divider .kicker{font-size:clamp(70px,15vw,180px);font-weight:800;opacity:.22;line-height:.85;color:#fff;margin:0}
+  .title-slide{background:radial-gradient(120% 120% at 15% 0%,#fff8f0,var(--bg));justify-content:center}
+  .title-slide h1{font-size:clamp(34px,6.5vw,72px)}
+  .title-slide .lede{font-size:clamp(16px,2.2vw,24px);color:var(--muted);max-width:60ch;margin:.3em 0 0}
+  .title-slide .meta{margin-top:2em;font-size:14px;color:var(--muted)}
+  .kbd{background:var(--surface);border:1px solid var(--border);border-bottom-width:2px;border-radius:6px;padding:.05em .5em;font-size:.85em;font-family:inherit}
+  #bar{position:fixed;top:0;left:0;height:4px;background:var(--brand);width:0;transition:width .2s ease;z-index:30}
+  #hud{position:fixed;bottom:13px;right:18px;font-size:13px;color:var(--muted);z-index:30;font-variant-numeric:tabular-nums}
+  #title-hud{position:fixed;bottom:13px;left:18px;font-size:12px;color:var(--muted);z-index:30;text-transform:uppercase;letter-spacing:.1em}
+  #overview{position:fixed;inset:0;background:var(--bg);z-index:40;display:none;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;padding:24px;overflow:auto;align-content:start}
+  #overview.on{display:grid}
+  .thumb{border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:12px;cursor:pointer;font-size:12px;color:var(--muted);height:120px;overflow:hidden;line-height:1.35}
+  .thumb:hover{border-color:var(--brand)}
+  .thumb b{display:block;color:var(--brand);margin-bottom:5px;font-size:13px}
+  .thumb.div{background:var(--brand-soft)}
+  @media print{
+    html,body,#deck{height:auto;overflow:visible}
+    .slide{display:flex!important;position:relative;page-break-after:always;height:100vh;inset:auto}
+    #bar,#hud,#title-hud,#overview{display:none!important}
+  }
+</style>
+</head>
+<body>
+<div id="bar"></div>
+<div id="deck">
+
+<section class="slide title-slide">
+  <h1>BAM local-first<br>Deployment Plan</h1>
+  <p class="lede">Rolling out the CRDT variant: the operator console on volunteer browser devices, a self-hosted Subduction relay with roster access control, and the cron automations running against the replicated data.</p>
+  <p class="meta">
+    <span class="badge">branch crdt-keyhive</span>
+    <span class="badge">local-first/</span>
+    <span class="badge">Automerge + Subduction</span>
+    <span class="badge">roster of Ed25519 device keys</span><br><br>
+    Navigate with <span class="kbd">→</span> / <span class="kbd">Space</span> · overview with <span class="kbd">O</span> · print for PDF
+  </p>
+</section>
+
+<section class="slide divider"><p class="kicker">01</p><h1>What we're deploying</h1><p class="subhead">Four moving parts, one shared dataset</p></section>
+
+<section class="slide">
+  <h2>The system in one slide</h2>
+  <p class="subhead">Every device holds a full replica of two Automerge documents — the <b>roster</b> (who may sync) and the <b>base</b> (households, requests, distros, SMS outbox). Devices merge through a relay you run.</p>
+  <table>
+    <tr><th>Component</th><th>What it is</th><th>Runs on</th></tr>
+    <tr><td>Volunteer console</td><td>The same six-view operator console as <code>main</code>, on a CRDT-backed <code>BAM.api</code> — works fully offline at a distro</td><td>Any evergreen browser (phone or laptop), served as a static site</td></tr>
+    <tr><td>Subduction relay</td><td>Store-and-forward sync server (Rust, from <code>inkandswitch/subduction</code>)</td><td>One small VM you control</td></tr>
+    <tr><td>Ops runner</td><td>A Node ≥ 22.13 box enrolled like any device; runs the cron jobs + SMS gateway via <code>src/cli.ts</code></td><td>The same VM is fine</td></tr>
+    <tr><td>Admin device(s)</td><td>Bootstrap the org, enroll/revoke devices in the Roster view</td><td>An organizer's browser</td></tr>
+  </table>
+</section>
+
+<section class="slide">
+  <h2>What local-first buys BAM</h2>
+  <ul>
+    <li><b>Distros work with no connectivity.</b> Check-in, fulfillment, and intake run against the device's own replica; everything merges when the device is back online.</li>
+    <li><b>No central database to keep alive.</b> The relay only stores and forwards; every enrolled device is a full backup.</li>
+    <li><b>Access control is per-device, not per-password.</b> Each device has an Ed25519 key; the roster says who syncs, and revocation cuts a device off from all future syncs.</li>
+    <li><b>Same operations, same console.</b> The views are copied verbatim from the server variant — volunteers see the identical UI.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <h2>Honest status before we deploy</h2>
+  <ul>
+    <li>This is an <b>experiment branch</b> on pre-release research software — <code>@automerge/automerge-repo@2.6.0-subduction.40</code>, pinned exactly.</li>
+    <li><b>Verified end-to-end</b> (2026-07-06): device B joins by roster URL through a locally-built relay and receives the org data; 41 tests; full production snapshot imports in ~4s with counts identical to the Python importer.</li>
+    <li><b>To build during rollout:</b> the Twilio wrapper around the outbox-drain primitive (~50 lines; the Python variant's provider is the reference).</li>
+    <li><b>Not yet true:</b> end-to-end encryption, and server-side Keyhive enforcement of delegations (today's keyhive mode approves undelegated docs — maintainers: “we just approve all for now”).</li>
+  </ul>
+  <div class="note"><b>Consequence:</b> run this as a parallel pilot next to Airtable, not as a cutover. The plan below is scoped that way.</div>
+</section>
+
+<section class="slide divider"><p class="kicker">02</p><h1>Prerequisites</h1><p class="subhead">What to have in hand before day 1</p></section>
+
+<section class="slide">
+  <h2>Infrastructure checklist</h2>
+  <table>
+    <tr><th>Need</th><th>Why</th><th>Suggestion</th></tr>
+    <tr><td>Small VM (1–2 GB)</td><td>Relay + ops runner + static hosting</td><td>Any provider BAM already uses (a Digital Ocean droplet matches the existing stack)</td></tr>
+    <tr><td>Domain + TLS</td><td>Browsers need a secure context (HTTPS) for WebCrypto device keys, and the relay needs <code>wss://</code></td><td>e.g. <code>sync.bam.example</code> + <code>app.bam.example</code> behind one nginx + certbot</td></tr>
+    <tr><td>Node ≥ 22.13</td><td><code>Promise.withResolvers</code> — hard requirement of the subduction packages</td><td>Node 22 LTS on the VM</td></tr>
+    <tr><td>Rust toolchain</td><td>The relay isn't on crates.io yet; build from source once</td><td><code>rustup</code>; build takes ~4 minutes</td></tr>
+    <tr><td>Airtable snapshot</td><td>Seed data — produced by the <code>main</code> branch's <code>bam import-airtable</code></td><td>Already exists locally; contains PII, moves only over trusted channels</td></tr>
+  </table>
+</section>
+
+<section class="slide">
+  <h2>People &amp; key custody</h2>
+  <ul>
+    <li><b>Two org admins minimum.</b> Admin rights live on devices, not accounts; the roster's lockout guard stops an admin revoking itself, but a lost sole-admin device still strands the org. Two admins can always recover each other.</li>
+    <li><b>One tech volunteer</b> owns the VM: relay service, TLS renewal, cron, backups (~1–2 h/week after setup).</li>
+    <li><b>Relay key custody:</b> the relay's signing key file defines its identity — every client pins the relay's peer id, so back the key file up and never regenerate it casually.</li>
+  </ul>
+</section>
+
+<section class="slide divider"><p class="kicker">03</p><h1>The relay server</h1><p class="subhead">Build once, run as a service, pin its identity</p></section>
+
+<section class="slide">
+  <h2>Build and first run</h2>
+  <pre><span class="cap"># one-time build (~4 min)</span><code>git clone https://github.com/inkandswitch/subduction
+cd subduction &amp;&amp; cargo build --release -p subduction_cli
+
+# stable identity: generate the key file ONCE and keep it
+head -c 32 /dev/urandom | xxd -p -c 64 &gt; /etc/subduction/key   # 64 hex chars
+
+./target/release/subduction_cli server \
+  --socket 127.0.0.1:8944 \
+  --data-dir /var/lib/subduction \
+  --key-file /etc/subduction/key \
+  --auth keyhive</code></pre>
+  <ul>
+    <li>On startup it prints <code>Peer ID &lt;64 hex&gt;</code> — <b>that is the relay identity every client must trust.</b> Record it; it goes on the volunteer join card.</li>
+  </ul>
+  <div class="note"><b>Never</b> use <code>--ephemeral-key</code> in production: the peer id changes on every restart and all clients stop trusting the relay.</div>
+</section>
+
+<section class="slide">
+  <h2>Service + TLS</h2>
+  <div class="cols">
+    <div>
+      <pre><span class="cap"># /etc/systemd/system/subduction.service</span><code>[Unit]
+Description=Subduction relay
+After=network.target
+
+[Service]
+ExecStart=/opt/subduction/subduction_cli server \
+  --socket 127.0.0.1:8944 \
+  --data-dir /var/lib/subduction \
+  --key-file /etc/subduction/key \
+  --auth keyhive
+Restart=always
+User=subduction
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+    </div>
+    <div>
+      <pre><span class="cap"># nginx: wss://sync.bam.example → relay</span><code>location / {
+  proxy_pass http://127.0.0.1:8944;
+  proxy_http_version 1.1;
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection "upgrade";
+  proxy_read_timeout 1h;
+}</code></pre>
+      <ul>
+        <li>Same nginx serves the console's static <code>dist/</code> on <code>app.bam.example</code>.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Why the relay must be yours (verified)</h2>
+  <ul>
+    <li>Client roster policies protect <b>peer-served</b> traffic. A relay in <code>--auth open</code> mode <b>serves anyone who knows a doc URL</b> — we demonstrated a stranger pulling a doc from an open relay despite every client denying them.</li>
+    <li><code>--auth keyhive</code> initializes the access-control stack, but in today's build undelegated docs are still approved. Enforcement tightens when Keyhive delegation ships end-to-end (Ink &amp; Switch's e2e demo is still private).</li>
+    <li>Therefore, until then: <b>the relay is trusted infrastructure.</b> Self-host it, restrict shell access, and never point PII at a third-party or experiment relay.</li>
+  </ul>
+  <div class="note">The maintainers' experiment relay (<code>sync.subduction.inkandswitch.com</code>) approves all relay traffic and its DNS wasn't publicly resolvable when we checked — fine for toy tests if it comes online, never for BAM data.</div>
+</section>
+
+<section class="slide divider"><p class="kicker">04</p><h1>Browser devices</h1><p class="subhead">Hosting the console and preparing volunteer phones</p></section>
+
+<section class="slide">
+  <h2>Host the console as a static site</h2>
+  <pre><span class="cap"># build once per release, on the VM or in CI</span><code>cd local-first
+npm ci
+npm run build        # → dist/ (HTML + JS + WASM, ~5 MB / ~1.7 MB gzipped)
+rsync -a dist/ /var/www/app.bam.example/</code></pre>
+  <ul>
+    <li>The bundle contains <b>code only</b> — no data, no secrets. All data lives in each device's IndexedDB and moves only device ↔ relay.</li>
+    <li>HTTPS is required: the device key is a non-extractable WebCrypto key, and secure-context APIs power identity and storage.</li>
+    <li>The <code>local-first</code> GitHub workflow already runs typecheck + tests + build on every push — promote its artifact if you'd rather deploy from CI.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <h2>Device requirements &amp; storage reality</h2>
+  <ul>
+    <li>Any evergreen browser works; a volunteer's own phone is the target device (same mobile-first console as <code>main</code>).</li>
+    <li><b>Identity:</b> minted on first visit (<code>WebCryptoSigner</code>), lives in IndexedDB, never leaves the device.</li>
+    <li><b>Data:</b> the org replica also lives in IndexedDB and survives reloads and offline days.</li>
+    <li><b>Browsers may evict storage</b> (private windows always; iOS Safari after long disuse). That is an inconvenience, not data loss — the org data is replicated on the relay and every other device.</li>
+  </ul>
+  <div class="note">If a device gets wiped: it comes back with a <b>new</b> peer id. Procedure = revoke the old id, enroll the new one, rejoin. Two minutes, no data lost.</div>
+</section>
+
+<section class="slide">
+  <h2>The volunteer "join card"</h2>
+  <p class="subhead">Everything a device needs to join, on one card (internal, but none of it is a password):</p>
+  <table>
+    <tr><th>Field</th><th>Example</th></tr>
+    <tr><td>Console URL</td><td><code>https://app.bam.example</code></td></tr>
+    <tr><td>Roster URL</td><td><code>automerge:4UnhLNF3mr5bfowuGo1Qcqcy4ddQ</code></td></tr>
+    <tr><td>Relay endpoint</td><td><code>wss://sync.bam.example</code></td></tr>
+    <tr><td>Relay peer id</td><td><code>d8cccd43…539ff</code> (64 hex — printed by the server)</td></tr>
+  </table>
+  <ul>
+    <li>Access is still gated by the roster: knowing the card does not grant sync until an admin enrolls the device's peer id.</li>
+  </ul>
+</section>
+
+<section class="slide divider"><p class="kicker">05</p><h1>Founding setup</h1><p class="subhead">Day 1: org, data, ops runner</p></section>
+
+<section class="slide">
+  <h2>Bootstrap the org (admin device)</h2>
+  <ol>
+    <li>Open the console → first-run screen → <b>Create a new org</b> (“BAM”). The creating device becomes the founding <b>admin</b>.</li>
+    <li>Open the <b>Roster</b> view: copy the <b>roster URL</b> — that plus the relay endpoint is how every other device joins.</li>
+    <li>Immediately enroll a <b>second admin device</b> (another organizer's phone) — the two-admin rule.</li>
+  </ol>
+  <pre><span class="cap"># alternative: bootstrap from the ops box instead</span><code>alias bam-lf="node --experimental-strip-types src/cli.ts"
+bam-lf org create --name "BAM" --data-dir /var/lib/bam-lf</code></pre>
+</section>
+
+<section class="slide">
+  <h2>Enroll the ops runner and import the data</h2>
+  <pre><code>bam-lf identity --data-dir /var/lib/bam-lf        # prints the runner's peer id
+# → admin enrolls it in the Roster view (role: volunteer)
+
+bam-lf org join --roster automerge:… \
+  --endpoint wss://sync.bam.example \
+  --relay-peer &lt;relay 64-hex&gt; --data-dir /var/lib/bam-lf
+
+bam-lf import --snapshot /path/to/airtable-snapshot --data-dir /var/lib/bam-lf
+bam-lf stats --data-dir /var/lib/bam-lf</code></pre>
+  <ul>
+    <li>Expected counts (verified against the real snapshot): <b>1,252 households · 5,390 requests · 2,382 social-service rows (1,478 mesh) · 312 fulfilled-count rows</b>; import takes ~4 s and is idempotent (keyed by Airtable record ids).</li>
+    <li>Within seconds, every enrolled device's console shows the same data.</li>
+  </ul>
+  <div class="note"><b>Do not run <code>jobs expire</code> against freshly migrated data.</b> Migrated requests carry their original 2024–25 open dates, so expiration would time out all of them at once (we did this to a scratch replica on purpose — recovery is one idempotent re-import). Decide open-date policy with the team first.</div>
+</section>
+
+<section class="slide">
+  <h2>Day-1 acceptance test</h2>
+  <ol>
+    <li>Second device joins by roster URL → sees households (this exact path is covered by the relay-gated e2e test in <code>test/sync.test.ts</code>).</li>
+    <li>Look up a real household by phone at both devices; check one in on device A; watch it appear on device B.</li>
+    <li>Turn on airplane mode on a phone → check someone in → reconnect → confirm the merge landed everywhere.</li>
+    <li>Revoke a test device in the Roster view → confirm its next sync is refused.</li>
+  </ol>
+</section>
+
+<section class="slide divider"><p class="kicker">06</p><h1>Onboarding volunteers</h1><p class="subhead">Enroll, work, offboard — all key-based</p></section>
+
+<section class="slide">
+  <h2>Enrolling a volunteer (2 minutes)</h2>
+  <ol>
+    <li>Volunteer opens <code>https://app.bam.example</code> on their phone. The device mints its key and shows the <b>peer id</b> with a copy button.</li>
+    <li>Volunteer sends the peer id to an admin (any channel — it's a public key).</li>
+    <li>Admin, in the <b>Roster</b> view: <i>Enroll device</i> → paste peer id, name (“Rosa — distro phone”), role <code>volunteer</code>.</li>
+    <li>Volunteer taps <b>Join</b> with the join-card fields → the console fills with the org data and stays usable offline from then on.</li>
+  </ol>
+  <div class="note">Name entries after the <i>person and device</i> (“Rosa — personal phone”) — a person with two devices is two roster entries, revocable independently.</div>
+</section>
+
+<section class="slide">
+  <h2>Roles</h2>
+  <table>
+    <tr><th></th><th>volunteer</th><th>admin</th></tr>
+    <tr><td>Check-in / intake / outreach / distros views</td><td>✓</td><td>✓</td></tr>
+    <tr><td>Run jobs from the Admin view</td><td>✓ (any replica can)</td><td>✓</td></tr>
+    <tr><td>Enroll / revoke devices</td><td>—</td><td>✓</td></tr>
+    <tr><td>Can revoke itself</td><td>n/a</td><td>blocked (lockout guard)</td></tr>
+  </table>
+  <ul>
+    <li>Keep the admin set small (2–3 organizer devices). Everything else is <code>volunteer</code>.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <h2>Offboarding &amp; lost devices</h2>
+  <ul>
+    <li><b>Offboard:</b> admin taps <i>Revoke</i> on the roster entry. Every compliant peer refuses the device's future connects/fetches/puts immediately (the policy reads the live roster doc).</li>
+    <li><b>Lost/stolen device:</b> same action, plus honesty about what revocation can't do — <b>it cannot recall data the device already replicated.</b> The device held a full copy of what it had synced; treat loss as a PII incident per BAM's policy, mitigated by the nightly scrub keeping old PII out of replicas.</li>
+    <li><b>Returning volunteer:</b> re-enroll the same peer id (re-activation is supported) or a new one if the device changed.</li>
+  </ul>
+</section>
+
+<section class="slide divider"><p class="kicker">07</p><h1>Automations on the CRDT</h1><p class="subhead">Cron on the ops runner; merges keep it safe</p></section>
+
+<section class="slide">
+  <h2>How automation works here</h2>
+  <ul>
+    <li>The ops runner is just another enrolled device with a replica on disk. Each job opens the store, connects to the relay, <b>mutates its replica</b>, lingers a few seconds so the change uploads, and exits.</li>
+    <li>Concurrent volunteer edits are safe by construction: CRDT merges are per-field, and the domain ops are idempotent (a fulfillment applied twice counts once; expiration re-runs are no-ops).</li>
+    <li>The same job commands exist in the console's Admin view — cron just makes them unattended.</li>
+  </ul>
+  <pre><span class="cap"># the automation surface (src/cli.ts)</span><code>bam-lf jobs expire                      # daily — 14/30-day windows
+bam-lf jobs scrub-pii                   # daily — PII retention
+bam-lf jobs website-data --out FILE     # hourly — open counts JSON
+bam-lf outbox drain [--mark-sent]       # SMS gateway primitive</code></pre>
+</section>
+
+<section class="slide">
+  <h2>Crontab for the ops runner</h2>
+  <pre><span class="cap"># /etc/cron.d/bam-lf — Node 22 on PATH; a wrapper keeps lines readable:
+# /usr/local/bin/bam-lf:  #!/bin/sh
+#   cd /opt/bam-v2/local-first &amp;&amp; exec node --experimental-strip-types \
+#     src/cli.ts "$@" --data-dir /var/lib/bam-lf</span><code># hourly: publish open request counts where the website reads them
+0 * * * *  bam  bam-lf jobs website-data --out /var/www/request_data.json
+
+# daily 06:00: auto-expiration, then the PII scrub
+0 6 * * *  bam  bam-lf jobs expire &amp;&amp; bam-lf jobs scrub-pii
+
+# every 5 min: drain the SMS outbox through the gateway script
+*/5 * * * *  bam  /opt/bam-v2/local-first/scripts/sms-gateway.sh</code></pre>
+  <ul>
+    <li>Identical cadence to the server variant's cron mapping (hourly <code>UpdateWebsiteRequestData</code>, daily expire + scrub) — the spec's section 5, relocated onto a replica.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <h2>SMS: the outbox pattern</h2>
+  <ul>
+    <li>An outreach blast doesn't send anything by itself — it renders the messages (randomized <code>[REQUEST_URL]</code>, <code>[FIRST_NAME]</code>) and <b>queues them in the shared <code>smsOutbox</code></b>, stamping <code>lastTexted</code>. Any device can queue; one gateway sends.</li>
+    <li>The gateway loop on the ops runner: <code>bam-lf outbox drain</code> lists unsent messages as JSON lines → send each via Twilio → <code>--mark-sent</code> stamps them so no other device re-sends.</li>
+    <li><b>To build during week 2:</b> the ~50-line Twilio wrapper between those two steps. The server variant's <code>bam/sms/twilio_provider.py</code> is the reference; same env vars (<code>TWILIO_*</code>).</li>
+  </ul>
+  <div class="note">Rate limiting lives in the gateway (the spec's 30-messages-then-30s), not in the queueing — queue fast, send politely.</div>
+</section>
+
+<section class="slide">
+  <h2>Website data, end to end</h2>
+  <ul>
+    <li><code>jobs website-data --out /var/www/request_data.json</code> writes the same shape as the server variant's <code>UpdateWebsiteRequestData</code>: <code>{generatedAt, counts: [{type, label, count}]}</code> with trilingual labels.</li>
+    <li>Point the existing website integration at that file (or rsync it wherever the current hourly job publishes).</li>
+  </ul>
+  <pre><code>{
+  "generatedAt": "2026-07-06T20:04:10.867Z",
+  "counts": [
+    { "type": "mesh_internet", "label": "Mesh Internet Install", "count": 1478 },
+    { "type": "english_classes", "label": "Clases de inglés / English Classes / 英語課", "count": 737 }
+  ]
+}</code></pre>
+</section>
+
+<section class="slide divider"><p class="kicker">08</p><h1>Coexistence with Airtable</h1><p class="subhead">Pilot in parallel — do not cut over</p></section>
+
+<section class="slide">
+  <h2>Pilot posture</h2>
+  <ul>
+    <li><b>Airtable stays the source of truth</b> for the pilot. The CRDT org is seeded from the same snapshot pipeline (<code>bam import-airtable</code> on <code>main</code> → <code>bam-lf import</code>).</li>
+    <li>Writes made in the CRDT world (check-ins, intakes) <b>do not flow back to Airtable</b> — there is no reverse sync.</li>
+    <li>Re-importing a fresh snapshot <b>overwrites mapped fields</b> on rows with the same Airtable ids — statuses reset to the snapshot's values. So: <b>freeze re-imports during the pilot window</b>, or treat the pilot as read-mostly.</li>
+  </ul>
+  <div class="note">Decision for the team at pilot review: keep dual-running with periodic reseeds, build a reverse exporter, or park the branch until Keyhive enforcement ships.</div>
+</section>
+
+<section class="slide divider"><p class="kicker">09</p><h1>Security &amp; privacy</h1><p class="subhead">The checklist, with what's verified vs pending</p></section>
+
+<section class="slide">
+  <h2>Deployment checklist</h2>
+  <table>
+    <tr><th>Control</th><th>Status</th></tr>
+    <tr><td>Self-hosted relay, <code>--auth keyhive</code>, shell access restricted</td><td>required — the relay is trusted infra today</td></tr>
+    <tr><td>Relay key file backed up; peer id pinned on every client</td><td>required (clients refuse unknown relays by policy)</td></tr>
+    <tr><td>Roster deny-by-default; ≥ 2 admin devices</td><td>enforced in code; verified by tests</td></tr>
+    <tr><td>Nightly <code>jobs scrub-pii</code> (addresses off closed requests, anonymize inactive households, keep <code>phoneHash</code> for reconnection)</td><td>shipped; same semantics as <code>main</code></td></tr>
+    <tr><td>Revocation drill in onboarding docs; device loss = PII incident procedure</td><td>process — write it down with the team</td></tr>
+    <tr><td>No PII through third-party/experiment relays, ever</td><td>policy — verified that open relays serve anyone</td></tr>
+    <tr><td>End-to-end encryption; server-enforced Keyhive delegations</td><td><b>not yet</b> — pending upstream; re-evaluate when their e2e demo ships</td></tr>
+  </table>
+</section>
+
+<section class="slide divider"><p class="kicker">10</p><h1>Runbook &amp; timeline</h1><p class="subhead">Operate it, and a four-week rollout</p></section>
+
+<section class="slide">
+  <h2>Backups &amp; recovery</h2>
+  <ul>
+    <li><b>Continuous backup is structural:</b> every enrolled device is a full replica. Additionally snapshot nightly: the relay's <code>--data-dir</code>, the ops runner's <code>/var/lib/bam-lf</code> (storage + <code>identity.key</code> + <code>state.json</code>), and <code>/etc/subduction/key</code>.</li>
+    <li><b>Relay dies:</b> restore data-dir + key file on a new VM, keep the DNS name → clients reconnect untouched (same peer id).</li>
+    <li><b>Everything dies:</b> any surviving device (a volunteer phone) still holds the org; stand up a new relay, re-point clients, and the replica re-uploads.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <h2>Monitoring (lightweight)</h2>
+  <ul>
+    <li><code>journalctl -u subduction</code> — the relay logs every connect with a peer id; unknown ids showing up repeatedly = someone probing.</li>
+    <li>Cron a daily <code>bam-lf stats</code> diff — counts moving as expected is the cheapest health check.</li>
+    <li>Alert if <code>bam-lf outbox --unsent</code> has messages older than ~1 h (gateway stuck).</li>
+    <li>Pin versions; upgrade the subduction packages deliberately (pre-release — read release notes, re-run the e2e test first).</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <h2>Four-week rollout</h2>
+  <table>
+    <tr><th>Week</th><th>Milestone</th><th>Owner</th></tr>
+    <tr><td>1</td><td>VM + TLS + relay as a service (stable key); console hosted; ops runner enrolled</td><td>tech volunteer</td></tr>
+    <tr><td>2</td><td>Org bootstrapped (2 admins); snapshot imported; cron jobs live; Twilio gateway script built + tested with <code>--mark-sent</code> on a scratch org</td><td>tech volunteer + organizers</td></tr>
+    <tr><td>3</td><td>Pilot distro: 3–5 volunteer phones enrolled, check-in run entirely on the console (offline drill included); Airtable untouched as fallback</td><td>distro leads</td></tr>
+    <tr><td>4</td><td>Review: merge conflicts observed? storage evictions? volunteer feedback? → decide continue / expand / park</td><td>everyone</td></tr>
+  </table>
+</section>
+
+<section class="slide">
+  <h2>Open decisions for the team</h2>
+  <ul>
+    <li>Where does the relay live (existing DO account?) and who holds VM + relay-key custody?</li>
+    <li>Which two organizers' devices are the founding admins?</li>
+    <li>Open-date policy for migrated requests before enabling <code>jobs expire</code> (refresh them, or accept a one-time timeout wave?).</li>
+    <li>Pilot distro date, and which volunteers test the offline flow.</li>
+    <li>Reverse sync to Airtable: build, or accept read-mostly piloting?</li>
+  </ul>
+</section>
+
+<section class="slide title-slide">
+  <h1>Ready to pilot</h1>
+  <p class="lede">Branch <code>crdt-keyhive</code> · <code>local-first/</code> — 41 tests incl. the relay e2e, the real dataset imported and verified, and every trust-model claim in this deck tested against a live relay before it was written down.</p>
+  <p class="meta">
+    github.com/bushwickayudamutua/bam-v2 (branch crdt-keyhive) · <code>local-first/README.md</code> for the full trust model<br>
+    Try it now: <code>cd local-first &amp;&amp; npm install &amp;&amp; npm run dev</code> · relay: build <code>inkandswitch/subduction</code>, run with <code>--auth keyhive</code>
+  </p>
+</section>
+
+</div>
+<div id="title-hud">BAM local-first — deployment</div>
+<div id="hud"></div>
+<div id="overview" aria-hidden="true"></div>
+<script>
+(function(){
+  "use strict";
+  var slides = [].slice.call(document.querySelectorAll('.slide'));
+  var i = 0;
+  var bar = document.getElementById('bar');
+  var hud = document.getElementById('hud');
+  var overview = document.getElementById('overview');
+  var ovOn = false;
+
+  function clamp(n){ return Math.max(0, Math.min(slides.length - 1, n)); }
+
+  function show(n){
+    slides[i].classList.remove('active');
+    i = clamp(n);
+    slides[i].classList.add('active');
+    slides[i].scrollTop = 0;
+    var pct = slides.length > 1 ? (i / (slides.length - 1)) * 100 : 100;
+    bar.style.width = pct + '%';
+    hud.textContent = (i + 1) + ' / ' + slides.length;
+    if (location.hash !== '#' + (i + 1)) history.replaceState(null, '', '#' + (i + 1));
+  }
+  function next(){ show(i + 1); }
+  function prev(){ show(i - 1); }
+
+  function buildOverview(){
+    overview.innerHTML = '';
+    slides.forEach(function(s, idx){
+      var head = s.querySelector('h1, h2');
+      var t = document.createElement('div');
+      t.className = 'thumb' + (s.classList.contains('divider') ? ' div' : '');
+      t.innerHTML = '<b>' + (idx + 1) + '</b>';
+      t.appendChild(document.createTextNode(head ? head.textContent : ''));
+      t.onclick = function(){ toggleOverview(false); show(idx); };
+      overview.appendChild(t);
+    });
+  }
+  function toggleOverview(on){
+    ovOn = (on === undefined) ? !ovOn : on;
+    overview.classList.toggle('on', ovOn);
+  }
+
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown'){ e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp'){ e.preventDefault(); prev(); }
+    else if (e.key === 'Home'){ e.preventDefault(); show(0); }
+    else if (e.key === 'End'){ e.preventDefault(); show(slides.length - 1); }
+    else if (e.key === 'o' || e.key === 'O'){ toggleOverview(); }
+    else if (e.key === 'Escape'){ toggleOverview(false); }
+  });
+  document.getElementById('deck').addEventListener('click', function(e){
+    if (e.target.closest('a, button, pre, table')) return;
+    next();
+  });
+
+  buildOverview();
+  var start = parseInt((location.hash || '').replace('#', ''), 10);
+  slides[0].classList.add('active');
+  show(isNaN(start) ? 0 : clamp(start - 1));
+})();
+</script>
+</body>
+</html>
