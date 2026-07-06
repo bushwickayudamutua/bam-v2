@@ -113,14 +113,25 @@ for _alias, _key in ITEM_ALIASES.items():
 
 
 def normalize_type(value: str) -> str | None:
-    """Resolve a key, label segment, or item alias to the canonical key."""
+    """Resolve a key, label segment, or item alias to the canonical key.
+
+    Trilingual inputs whose full label differs from the catalog's (e.g. a
+    base-specific select like "Mesa de centro / Coffee Table / 咖啡桌") still
+    resolve if any of their segments matches a known segment or alias.
+    """
     if not value:
         return None
     candidate = value.strip()
     if candidate in BY_KEY:
         return candidate
     match = _BY_LABEL_SEGMENT.get(candidate.lower())
-    return match.key if match else None
+    if match is not None:
+        return match.key
+    for segment in candidate.split(" / "):
+        match = _BY_LABEL_SEGMENT.get(segment.strip().lower())
+        if match is not None:
+            return match.key
+    return None
 
 
 def get_request_type(key: str) -> RequestType:

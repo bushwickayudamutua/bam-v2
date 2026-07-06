@@ -106,6 +106,29 @@ All settings come from environment variables (`bam/config.py`):
 | `BAM_LOCAL_TIMEZONE` | `America/New_York` | Timezone for business dates (last texted, fulfilled counts, processing dates); timestamps stay UTC. |
 | `BAM_WEBSITE_DATA_PATH` | `website_request_data.json` | Output path for the website request-count JSON. |
 
+## Migrating from the production Airtable base
+
+`bam import-airtable` migrates BAM's production V2 Airtable base
+(`appjIo54Z8MWrqhlI` — the base the spec's data schema was documented from)
+into the local database:
+
+```sh
+export BAM_AIRTABLE_V2_TOKEN=pat...   # scopes: schema.bases:read, data.records:read
+bam import-airtable                    # pulls a raw snapshot, then imports it
+bam import-airtable --from-snapshot airtable-snapshot   # re-run offline
+```
+
+The import is **idempotent** (rows are keyed by their Airtable record id, so
+re-runs update in place) and **lossless by default**: request types that
+don't resolve to the catalog keep their raw trilingual label, and every
+anomaly (unmatched types, unknown statuses, shared phone numbers, orphaned
+links) is listed in the JSON report instead of being silently dropped. Field
+mapping details live in `bam/services/airtable_import.py` and
+[docs/SPEC-MAPPING.md](docs/SPEC-MAPPING.md).
+
+**PII caution:** the snapshot directory and the SQLite database contain real
+names, phones, and addresses. Both are gitignored — keep them local.
+
 ## Cron mapping
 
 Mirrors the spec's section 5 jobs and the bam-automation hourly/daily crons:
@@ -129,6 +152,7 @@ The spec's web-triggered `send_sms` function is `POST /outreach/blast` (or
 | `bam website-data` | Write open request counts to the website JSON (hourly cron). |
 | `bam scrub-pii` | Scrub expired PII (daily cron). |
 | `bam no-shows --date YYYY-MM-DD` | End-of-distro no-show pass for that date (spec 6.3). |
+| `bam import-airtable [--base-id --snapshot-dir --from-snapshot]` | Migrate the production Airtable V2 base (snapshot + idempotent import). |
 | `bam blast --template "..." [--request-types --languages --limit --max-messages --exclude-texted-days --exclude-attended-days --dry-run]` | Build the outreach list and send the text blast (spec 6.2); `--dry-run` previews via the console provider and persists nothing. |
 
 Every non-serve command prints a JSON report to stdout.

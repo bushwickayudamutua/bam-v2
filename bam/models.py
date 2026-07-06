@@ -87,6 +87,7 @@ class Household(SQLModel, table=True):
     last_attended: Optional[date] = None
 
     anonymized_at: Optional[datetime] = None
+    airtable_id: Optional[str] = Field(default=None, index=True, unique=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
@@ -117,6 +118,7 @@ class Request(SQLModel, table=True):
     geocode: Optional[str] = None
     address: Optional[str] = None
 
+    airtable_id: Optional[str] = Field(default=None, index=True, unique=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
@@ -148,6 +150,7 @@ class SocialServiceRequest(SQLModel, table=True):
     status_last_updated_at: datetime = Field(default_factory=utcnow)
     processing_date: Optional[date] = None
 
+    airtable_id: Optional[str] = Field(default=None, index=True, unique=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
@@ -167,6 +170,7 @@ class Distro(SQLModel, table=True):
     duration_minutes: Optional[int] = None
     appointments: Optional[str] = None
     notes: Optional[str] = None
+    airtable_id: Optional[str] = Field(default=None, index=True, unique=True)
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -206,6 +210,7 @@ class FormSubmission(SQLModel, table=True):
     city_state: Optional[str] = None
     zip_code: Optional[str] = None
 
+    airtable_id: Optional[str] = Field(default=None, index=True, unique=True)
     created_at: datetime = Field(default_factory=utcnow)
     processed_at: Optional[datetime] = None
     scrubbed_at: Optional[datetime] = None

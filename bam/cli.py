@@ -88,6 +88,34 @@ def cmd_no_shows(args: argparse.Namespace) -> None:
     _print_json(report.model_dump(mode="json"))
 
 
+def cmd_import_airtable(args: argparse.Namespace) -> None:
+    """Migrate the production Airtable V2 base into the local database.
+
+    Pulls a raw snapshot first (auditable, re-runnable offline via
+    ``--from-snapshot``), then imports it. Idempotent: re-runs update rows
+    in place by their Airtable record id.
+    """
+    from bam.airtable import AirtableClient, SnapshotSource, dump_snapshot
+    from bam.services.airtable_import import import_base
+
+    init_db()
+    if args.from_snapshot:
+        source = SnapshotSource(args.from_snapshot)
+        snapshot_counts = None
+    else:
+        client = AirtableClient(
+            token=settings.airtable_token, base_id=args.base_id
+        )
+        snapshot_counts = dump_snapshot(client, args.snapshot_dir)
+        source = SnapshotSource(args.snapshot_dir)
+    with Session(get_engine()) as session:
+        report = import_base(session, source)
+    output = {"import": report.model_dump(mode="json")}
+    if snapshot_counts is not None:
+        output["snapshot"] = {"dir": args.snapshot_dir, "records": snapshot_counts}
+    _print_json(output)
+
+
 def cmd_blast(args: argparse.Namespace) -> None:
     """Build the outreach list and send the text blast (spec 6.2).
 
@@ -167,6 +195,28 @@ def build_parser() -> argparse.ArgumentParser:
         "--date", type=_parse_date, required=True, help="Distribution date (YYYY-MM-DD)."
     )
     no_shows.set_defaults(func=cmd_no_shows)
+
+    import_airtable = subparsers.add_parser(
+        "import-airtable",
+        help="Migrate the production Airtable V2 base into the local database.",
+    )
+    import_airtable.add_argument(
+        "--base-id",
+        default=settings.airtable_base_id,
+        help=f"Airtable base id (default {settings.airtable_base_id}).",
+    )
+    import_airtable.add_argument(
+        "--snapshot-dir",
+        default="airtable-snapshot",
+        help="Directory for the raw JSON snapshot (gitignored; contains PII).",
+    )
+    import_airtable.add_argument(
+        "--from-snapshot",
+        default=None,
+        metavar="DIR",
+        help="Import from an existing snapshot directory instead of the API.",
+    )
+    import_airtable.set_defaults(func=cmd_import_airtable)
 
     blast = subparsers.add_parser(
         "blast", help="Build the outreach list and send the text blast (spec 6.2)."

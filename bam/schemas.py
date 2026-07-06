@@ -158,3 +158,23 @@ class DistroOut(BaseModel):
     duration_minutes: int | None = None
     appointments: str | None = None
     notes: str | None = None
+
+
+class TableImportCounts(BaseModel):
+    created: int = 0
+    updated: int = 0
+    skipped: int = 0
+
+
+class ImportReport(BaseModel):
+    tables_found: dict[str, str] = {}
+    households: TableImportCounts = TableImportCounts()
+    requests: TableImportCounts = TableImportCounts()
+    social_service_requests: TableImportCounts = TableImportCounts()
+    distros: TableImportCounts = TableImportCounts()
+    fulfilled_counts: TableImportCounts = TableImportCounts()
+    form_submissions: TableImportCounts = TableImportCounts()
+    unmatched_request_types: list[str] = []
+    unknown_statuses: list[str] = []
+    duplicate_phone_airtable_ids: list[str] = []
+    orphaned_airtable_ids: list[str] = []

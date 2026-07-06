@@ -75,5 +75,17 @@ class Settings:
         )
     )
 
+    # Airtable migration source (the production V2 base). Token needs the
+    # schema.bases:read and data.records:read scopes on this base.
+    airtable_token: str = field(
+        default_factory=lambda: os.environ.get("BAM_AIRTABLE_V2_TOKEN")
+        or os.environ.get("AIRTABLE_TOKEN", "")
+    )
+    airtable_base_id: str = field(
+        default_factory=lambda: os.environ.get(
+            "BAM_AIRTABLE_V2_BASE_ID", "appjIo54Z8MWrqhlI"
+        )
+    )
+
 
 settings = Settings()

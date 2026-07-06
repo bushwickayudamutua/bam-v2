@@ -11,5 +11,6 @@ build/
 *.db
 *.sqlite3
 website_request_data.json
+airtable-snapshot/
 .env
 .DS_Store

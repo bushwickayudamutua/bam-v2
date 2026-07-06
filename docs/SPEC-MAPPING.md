@@ -157,3 +157,15 @@ full report but writes nothing — in particular `last_texted` stays
 untouched, so the real send's recency filters still match. Unknown household
 ids passed to a blast are reported in `unknown_household_ids` rather than
 aborting outreach to the valid ones.
+
+### 15. Airtable migration mapping
+
+`bam import-airtable` migrates the production V2 base. Key decisions:
+Airtable record ids are stored as `airtable_id` for idempotent re-runs;
+`request_opened_at` = "Request Opened At" → "Legacy Date Submitted" → record
+created time (the "effective open date", per decision 12); request types
+normalize to catalog keys with unresolvable labels kept raw and reported;
+households whose phone normalizes to an already-claimed number import without
+a phone (raw value noted) per the spec's shared-phone edge case; form
+submissions linked to a household are marked processed (their requests
+already exist), unlinked ones stay pending for `bam process-intake`.
