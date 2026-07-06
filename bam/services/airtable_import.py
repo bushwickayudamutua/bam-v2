@@ -61,12 +61,24 @@ TABLE_ALIASES: dict[str, tuple[str, ...]] = {
     "households": ("households",),
     "requests": ("requests",),
     "social_service_requests": ("social service requests", "social services"),
+    "mesh_requests": ("mesh requests",),
     "distros": ("distros", "distributions"),
     "fulfilled_counts": ("fulfilled request count", "fulfilled request counts"),
     "form_submissions": (
         "assistance request form submissions",
         "form submissions",
     ),
+}
+
+#: The Mesh table's pipeline statuses -> request lifecycle buckets. The raw
+#: status is preserved on the request notes; unknown statuses map to Open.
+MESH_DELIVERED_STATUSES = {"yay! mesh installed!"}
+MESH_TIMEOUT_STATUSES = {
+    "not interested",
+    "cannot install - does not have los",
+    "nycha - currently does not qualify",
+    "cannot install - no roof access",
+    "cannot install - other reason",
 }
 
 _STATUS_BY_VALUE = {status.value.lower(): status for status in RequestStatus}
@@ -156,6 +168,10 @@ def import_base(
             session, source, tables["social_service_requests"], SocialServiceRequest,
             report.social_service_requests, household_map, report, now,
         )
+    if "mesh_requests" in tables:
+        _import_mesh_requests(
+            session, source, tables["mesh_requests"], household_map, report, now
+        )
     if "distros" in tables:
         _import_distros(session, source, tables["distros"], report, now)
     if "fulfilled_counts" in tables:
@@ -227,7 +243,13 @@ def _import_households(
         )
         household.email = _scalar(_first(fields, "Email"))
         household.email_error = _scalar(_first(fields, "Email Error"))
-        household.languages = _as_list(_first(fields, "Languages", "Language"))
+        languages = _as_list(_first(fields, "Languages", "Language"))
+        for other in _as_list(_first(fields, "Other Languages")):
+            if other not in languages:
+                languages.append(other)
+        household.languages = languages
+        household.needs_delivery = bool(_first(fields, "Needs Delivery"))
+        household.needs_email_outreach = bool(_first(fields, "Needs Email Outreach"))
         notes = _scalar(_first(fields, "Notes", "Case Notes"))
         household.notes = str(notes) if notes else None
         if duplicate_of is not None and duplicate_of != record["id"] and raw_phone:
@@ -245,6 +267,7 @@ def _import_households(
         if status_raw and household.appointment_status is None:
             _append_unique(report.unknown_statuses, f"appointment: {status_raw}")
         household.last_texted = _parse_date(_first(fields, "Last Texted"))
+        household.last_called = _parse_date(_first(fields, "Last Called"))
 
         legacy_first = _parse_datetime(_first(fields, "Legacy First Date Submitted"))
         if legacy_first and legacy_first < household.created_at.replace(
@@ -349,6 +372,104 @@ def _import_requests(
         else:
             obj.internet_access = _as_list(_first(fields, "Internet Access"))
             obj.roof_accessible = bool(_first(fields, "Roof Accessible?"))
+        obj.updated_at = now
+
+        session.add(obj)
+        counts.created += created
+        counts.updated += not created
+    session.commit()
+
+
+def _import_mesh_requests(
+    session: Session,
+    source: RecordSource,
+    table: str,
+    household_map: dict[str, int],
+    report: ImportReport,
+    now: dt.datetime,
+) -> None:
+    """Mesh Requests -> SocialServiceRequest rows of type ``mesh_internet``.
+
+    The mesh install pipeline has 17 statuses; they bucket into the request
+    lifecycle (installed -> Delivered, cannot/won't install -> Timeout,
+    everything in-flight -> Open) with the raw status kept on the notes so
+    no pipeline detail is lost.
+    """
+    counts = report.mesh_requests
+    for record in source.records(table):
+        fields = record.get("fields", {})
+        created_time = _parse_datetime(record.get("createdTime")) or now
+
+        links = _first(fields, "Household", "Households") or []
+        link_id = links[0] if isinstance(links, list) and links else None
+        household_id = household_map.get(link_id) if link_id else None
+        if household_id is None:
+            report.orphaned_airtable_ids.append(record["id"])
+            counts.skipped += 1
+            continue
+
+        status_raw = str(_scalar(_first(fields, "Status")) or "").strip()
+        lowered = status_raw.lower()
+        if lowered in MESH_DELIVERED_STATUSES:
+            status = RequestStatus.DELIVERED
+        elif lowered in MESH_TIMEOUT_STATUSES:
+            status = RequestStatus.TIMEOUT
+        else:
+            status = RequestStatus.OPEN
+
+        note_parts = []
+        if status_raw:
+            note_parts.append(f"[mesh status] {status_raw}")
+        bin_number = _scalar(_first(fields, "Building Identification Number"))
+        if bin_number is not None:
+            note_parts.append(f"[mesh] BIN {int(bin_number)}")
+        accuracy = _scalar(_first(fields, "Address Accuracy"))
+        if accuracy:
+            note_parts.append(f"[mesh] address accuracy: {accuracy}")
+        last_requested = _parse_date(_first(fields, "Last Requested"))
+        if last_requested:
+            note_parts.append(f"[mesh] last requested: {last_requested.isoformat()}")
+
+        opened_at = (
+            _parse_datetime(_first(fields, "Request Opened At"))
+            or _parse_datetime(_first(fields, "Legacy Date Submitted"))
+            or created_time
+        )
+        status_updated_at = (
+            _parse_datetime(_first(fields, "Status Last Updated At")) or created_time
+        )
+        processing_date = _parse_date(_first(fields, "Processing Date"))
+        if processing_date is None and status != RequestStatus.OPEN:
+            processing_date = local_date(status_updated_at) + dt.timedelta(
+                days=default_expiry_days()
+            )
+
+        obj = session.exec(
+            select(SocialServiceRequest).where(
+                SocialServiceRequest.airtable_id == record["id"]
+            )
+        ).first()
+        created = obj is None
+        if obj is None:
+            obj = SocialServiceRequest(
+                airtable_id=record["id"],
+                household_id=household_id,
+                type="mesh_internet",
+                created_at=created_time,
+            )
+        obj.household_id = household_id
+        obj.type = "mesh_internet"
+        obj.status = status
+        obj.request_opened_at = opened_at
+        obj.status_last_updated_at = status_updated_at
+        obj.processing_date = processing_date
+        obj.notes = "\n".join(note_parts) or None
+        obj.internet_access = _as_list(_first(fields, "Internet Access"))
+        obj.street_address = _scalar(_first(fields, "Street Address"))
+        obj.city_state = _scalar(_first(fields, "City, State", "City State"))
+        zip_code = _scalar(_first(fields, "Zip Code"))
+        obj.zip_code = str(zip_code) if zip_code is not None else None
+        obj.address = _scalar(_first(fields, "Address"))
         obj.updated_at = now
 
         session.add(obj)

@@ -28,7 +28,12 @@ from bam.request_types import BY_KEY, is_social_service, normalize_type
 from bam.schemas import FormSubmissionIn, IntakeResult
 from bam.validation import hash_phone, validate_email_address, validate_phone
 
-BED_DETAIL_TYPES = ("bed", "furniture")
+#: Types whose requests get the form's bed details appended to their notes.
+BED_DETAIL_TYPES = tuple(
+    key
+    for key in BY_KEY
+    if "mattress" in key or "bed" in key or key in ("crib", "furniture")
+)
 
 
 def submit_form(

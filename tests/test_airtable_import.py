@@ -158,10 +158,10 @@ def test_request_import_normalizes_types_and_derives_dates(session: Session) -> 
     assert pots.processing_date is None
 
     coffee = by_airtable["recR2"]
-    assert coffee.type == "furniture"  # "Coffee Table" segment resolves via alias
+    assert coffee.type == "coffee_table"  # production select resolves directly
     assert coffee.status == RequestStatus.DELIVERED
     # No Processing Date in the base -> derived from status change (+14, not
-    # +30: 'furniture' is a standard-window type).
+    # +30: coffee_table is a standard-window type).
     assert coffee.processing_date == date(2026, 6, 15)
 
     odd = by_airtable["recR3"]
@@ -319,6 +319,59 @@ def test_import_is_idempotent(session: Session) -> None:
     assert second.requests.updated == 1
     assert len(session.exec(select(Household)).all()) == 1
     assert len(session.exec(select(Request)).all()) == 1
+
+
+def test_mesh_requests_import_as_social_service_with_status_buckets(
+    session: Session,
+) -> None:
+    """Mesh pipeline rows land as mesh_internet social-service requests with
+    lifecycle-bucketed statuses and the raw pipeline detail on notes."""
+    source = FakeSource(
+        base_tables(
+            Households=[rec("recH1", **{"Phone Number": "+17185550107"})],
+            **{
+                "Mesh Requests": [
+                    rec(
+                        "recM1",
+                        **{
+                            "Household": ["recH1"],
+                            "Status": "YAY! MESH INSTALLED!",
+                            "Building Identification Number": 3123456,
+                            "Address Accuracy": "Building",
+                        },
+                    ),
+                    rec(
+                        "recM2",
+                        **{
+                            "Household": ["recH1"],
+                            "Status": "Cannot Install - No Roof Access",
+                        },
+                    ),
+                    rec(
+                        "recM3",
+                        **{
+                            "Household": ["recH1"],
+                            "Status": "Step 2 - LOS Confirmed",
+                        },
+                    ),
+                ]
+            },
+        )
+    )
+
+    report = import_base(session, source, now=FIXED_NOW)
+
+    assert report.mesh_requests.created == 3
+    by_airtable = {
+        s.airtable_id: s
+        for s in session.exec(select(SocialServiceRequest)).all()
+    }
+    assert all(s.type == "mesh_internet" for s in by_airtable.values())
+    assert by_airtable["recM1"].status == RequestStatus.DELIVERED
+    assert "BIN 3123456" in by_airtable["recM1"].notes
+    assert by_airtable["recM2"].status == RequestStatus.TIMEOUT
+    assert by_airtable["recM3"].status == RequestStatus.OPEN
+    assert "[mesh status] Step 2 - LOS Confirmed" in by_airtable["recM3"].notes
 
 
 def test_invalid_phone_household_gets_raw_hash(session: Session) -> None:

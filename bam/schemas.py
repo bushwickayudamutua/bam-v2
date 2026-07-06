@@ -171,6 +171,7 @@ class ImportReport(BaseModel):
     households: TableImportCounts = TableImportCounts()
     requests: TableImportCounts = TableImportCounts()
     social_service_requests: TableImportCounts = TableImportCounts()
+    mesh_requests: TableImportCounts = TableImportCounts()
     distros: TableImportCounts = TableImportCounts()
     fulfilled_counts: TableImportCounts = TableImportCounts()
     form_submissions: TableImportCounts = TableImportCounts()

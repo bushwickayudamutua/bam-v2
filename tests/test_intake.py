@@ -563,23 +563,23 @@ def test_numeric_zip_code_is_coerced() -> None:
     assert payload.zip_code == "11221"
 
 
-def test_item_level_names_resolve_and_furniture_detail_is_kept(
-    session: Session,
-) -> None:
-    """Background section 5 item names (Plates, Sofa, ...) resolve via
-    ITEM_ALIASES, and furniture detail lands on the request notes."""
+def test_item_level_names_resolve_to_first_class_types(session: Session) -> None:
+    """Item names (Plates, Sofa, Dresser, ...) resolve to the production
+    catalog's first-class types; furniture-category requests carry the
+    delivery address."""
     result = intake.intake_and_process(
         session,
         FormSubmissionIn(
             phone_number=VALID_PHONE,
             kitchen_items=["Plates"],
             furniture_items=["Sofa", "Dresser"],
+            street_address="123 Knickerbocker Ave",
         ),
         now=FIXED_NOW,
     )
 
     assert result.unknown_types == []
     requests = session.exec(select(Request)).all()
-    assert sorted(r.type for r in requests) == ["furniture", "plates_cups_utensils"]
-    furniture = next(r for r in requests if r.type == "furniture")
-    assert "Sofa; Dresser" in (furniture.notes or "")
+    assert sorted(r.type for r in requests) == ["clothes_dresser", "plates", "sofa"]
+    sofa = next(r for r in requests if r.type == "sofa")
+    assert sofa.street_address == "123 Knickerbocker Ave"

@@ -1,15 +1,19 @@
 """Catalog of request types.
 
-Airtable stores request types as trilingual single-select strings, e.g.
-``"Jabón & Productos de baño / Soap & Shower Products / 肥皂和淋浴用品"``.
-This module keeps a stable machine key per type plus that display label, the
-category, and the auto-expiration window (14 days standard, 30 days for
-Pots & Pans — spec sections 2 and 4).
+The canonical labels below mirror the **production Airtable V2 base's**
+single-select options verbatim (base ``appjIo54Z8MWrqhlI``, pulled
+2026-07-06), e.g. ``"Jabón & Productos de baño / Soap & Shower Products /
+肥皂和淋浴用品"``. Each type keeps a stable machine key, its category, and
+its auto-expiration window (14 days standard, 30 days for Pots & Pans —
+spec sections 2 and 4).
 
-``normalize_type`` accepts either a key or any language segment of a label so
-intake payloads from any form language resolve to the same canonical key;
-``ITEM_ALIASES`` additionally maps the item-level names the current forms use
-(background section 5) onto their catalog type.
+``SPEC_COMPAT`` holds a handful of extra types that appear in the spec text
+(section 9) but not in the production base — kept so intake accepts them
+from forms; their labels are spec-derived, not production strings.
+
+``normalize_type`` accepts a key, a full label, any language segment of a
+label, or an ``ITEM_ALIASES`` entry, so intake payloads and Airtable column
+names from any form language resolve to the same canonical key.
 
 The catalog's ``expiry_days`` values mark each type's expiration *tier*;
 ``expiry_days_for``/``default_expiry_days`` resolve the tier against
@@ -30,94 +34,181 @@ EXTENDED_EXPIRY_DAYS = 30
 @dataclass(frozen=True)
 class RequestType:
     key: str
-    label: str  # "Español / English / 中文"
+    label: str  # "Español / English / 中文" (production string where available)
     category: str
     expiry_days: int = DEFAULT_EXPIRY_DAYS
 
 
 GOODS: list[RequestType] = [
+    # Food
+    RequestType("groceries", "Alimentos / Groceries / 食品", "food"),
+    RequestType("hot_meals", "Comida caliente / Hot meals / 热食", "food"),
     # Toiletries
+    RequestType("baby_diapers", "Pañales / Baby Diapers / 嬰兒紙尿褲", "toiletries"),
+    RequestType("adult_diapers", "Pañales de adultos / Adult Diapers / 成人紙尿褲", "toiletries"),
     RequestType("soap", "Jabón & Productos de baño / Soap & Shower Products / 肥皂和淋浴用品", "toiletries"),
-    RequestType("pads", "Toallas sanitarias, tampones y protectores / Pads, Tampons & Panty Liners / 卫生巾、卫生棉条和护垫", "toiletries"),
+    RequestType("pads", "Productos Femenino - Toallitas / Feminine Products - Pads / 衛生巾", "toiletries"),
+    # Household
+    RequestType("school_supplies", "Cosas de Escuela / School Supplies / 學校用品", "household"),
+    RequestType("clothing", "Ropa / Clothing / 服裝", "household"),
+    RequestType("stroller", "Coche / Stroller / 嬰兒車", "household"),
+    # Furniture
+    RequestType("sofa", "Sofa / Sofa / 沙發", "furniture"),
+    RequestType("clothes_dresser", "Cajonera / Clothes Dresser / 衣櫃", "furniture"),
+    RequestType("desk", "Escritorio / Desk /  書桌", "furniture"),
+    RequestType("coffee_table", "Mesa de centro / Coffee Table / 咖啡桌", "furniture"),
+    RequestType("chairs", "Sillas / Chairs / 椅子", "furniture"),
+    RequestType("storage", "Almacenamiento / Storage / 儲物櫃", "furniture"),
+    RequestType("dining_table", "Mesa Para Comedor / Dining Room Table / 餐桌", "furniture"),
+    RequestType("refrigerator", "Nevera / Refrigerator / 冰箱", "furniture"),
+    RequestType("air_conditioner", "Aire conditionador / Air Conditioner / 空調", "furniture"),
+    RequestType("other_furniture", "Otras Muebles / Other Furniture / 其他家具", "furniture"),
+    RequestType("crib", "Cuna / Crib / 嬰兒床", "furniture"),
+    RequestType("twin_mattress", "Colchón individual / Twin Mattress / 單人床墊", "furniture"),
+    RequestType("full_mattress", "Colchón matrimonio / Full Mattress / 雙人床墊", "furniture"),
+    RequestType("queen_mattress", "Colchón tamaño Queen / Queen Mattress / 雙人加大床墊", "furniture"),
+    RequestType("king_mattress", "Colchón tamaño King / King Mattress / 雙人特大床墊", "furniture"),
+    RequestType("twin_mattress_frame", "Cama individual / Twin Mattress + Frame / 單人床墊+床架", "furniture"),
+    RequestType("full_mattress_frame", "Cama matrimonio / Full Mattress + Frame / 雙人床墊+床架", "furniture"),
+    RequestType("queen_mattress_frame", "Cama tamaño Queen / Queen Mattress + Frame / 雙人加大床墊+床架", "furniture"),
+    RequestType("king_mattress_frame", "Cama tamaño King / King Mattress + Frame / 雙人特大床墊+床架", "furniture"),
+    RequestType("twin_bed_frame", "Bastidor individual / Twin Bed Frame / 單人床架", "furniture"),
+    RequestType("full_bed_frame", "Bastidor matrimonio / Full Bed Frame / 雙人床架", "furniture"),
+    RequestType("queen_bed_frame", "Bastidor tamaño Queen / Queen Bed Frame / 雙人加大床架", "furniture"),
+    RequestType("king_bed_frame", "Bastidor tamaño King / King Bed Frame / 雙人特大床架", "furniture"),
+    RequestType("loft_bunk_bed", "Litera / Loft or Bunk Bed / 閣樓床或上下床", "furniture"),
+    # Kitchen
+    RequestType("microwave", "Microondas / Microwave / 微波爐", "kitchen"),
+    RequestType("pots_pans", "Ollas y Sartenes / Pots & Pans / 鍋碗瓢盆", "kitchen", expiry_days=EXTENDED_EXPIRY_DAYS),
+    RequestType("plates", "Platos / Plates / 盤子", "kitchen"),
+    RequestType("cups", "Tazas / Cups / 杯子", "kitchen"),
+    RequestType("utensils", "Utensilios / Utensils / 餐具", "kitchen"),
+    RequestType("coffee_maker", "Cafetera / Coffee Maker / 咖啡機", "kitchen"),
+    RequestType("blender", "Licuadora / Blender / 攪拌機", "kitchen"),
+    RequestType("other_kitchen", "Otras Cosas de Cocina / Other Kitchen Items / 其他廚房用品", "kitchen"),
+]
+
+SOCIAL_SERVICES: list[RequestType] = [
+    RequestType("tenant_legal", "Asistencia legal de inquilinos / Tenant legal assistance / 租戶法律協助", "social_service"),
+    RequestType("in_school_services", "Asistencia con servicios escolares / Assistance with in-school services / 學校服務協助", "social_service"),
+    RequestType("tutoring", "Tutoría estudiantil / Tutoring for students / 學生輔導", "social_service"),
+    RequestType("english_classes", "Clases de inglés / English Classes / 英語課", "social_service"),
+    RequestType("housing", "Asistencia asegurando vivienda / Securing housing / 住房協助", "social_service"),
+    RequestType("health_insurance", "Asistencia con seguro médico / Medical insurance support / 醫療保險協助", "social_service"),
+    RequestType("business_support", "Asistencia de Negocios / Small Business Support / 小型企業協助", "social_service"),
+    RequestType("food_benefits", "Asistencia con beneficios de comida / Assistance with food benefits / 食品福利協助（WIC, SNAP, P-EBT）", "social_service"),
+    RequestType("transportation", "Asistencia con Transporte / Transportation Assistance / 交通運輸協助", "social_service"),
+    RequestType("child_disability", "Asistencia para niños con discapacidad / Assistance for disabled children / 殘疾兒童協助", "social_service"),
+    RequestType("pet_assistance", "Asistencia para mascotas / Pet Assistance / 寵物協助", "social_service"),
+    # Internet lives in two forms in production: the legacy low-cost-internet
+    # service (a Fulfilled Request Count column) and the NYC Mesh install
+    # pipeline (its own table, imported as mesh_internet).
+    RequestType("internet", "Low-Cost Home Internet", "social_service"),
+    RequestType("mesh_internet", "Mesh Internet Install", "social_service"),
+]
+
+#: Types the spec (section 9) names but the production base doesn't track.
+#: Kept so intake accepts them from forms; labels are spec-derived.
+SPEC_COMPAT: list[RequestType] = [
+    RequestType("masks_covid_tests", "Mascarillas y pruebas de COVID / Masks & COVID Tests / 口罩和新冠检测", "household"),
+    RequestType("pet_food", "Comida para mascotas / Pet Food / 宠物食品", "household"),
+    RequestType("kitchen_supplies", "Artículos de cocina / Kitchen Supplies / 厨房用品", "kitchen"),
+    RequestType("plates_cups_utensils", "Platos, vasos y cubiertos / Plates, Cups & Utensils", "kitchen"),
+    RequestType("furniture", "Muebles / Furniture / 家具", "furniture"),
+    RequestType("bed", "Cama / Bed / 床", "furniture"),
     RequestType("diapers_size_1", "Pañales talla 1 / Baby Diapers Size 1 / 婴儿尿布1号", "toiletries"),
     RequestType("diapers_size_2", "Pañales talla 2 / Baby Diapers Size 2 / 婴儿尿布2号", "toiletries"),
     RequestType("diapers_size_3", "Pañales talla 3 / Baby Diapers Size 3 / 婴儿尿布3号", "toiletries"),
     RequestType("diapers_size_4", "Pañales talla 4 / Baby Diapers Size 4 / 婴儿尿布4号", "toiletries"),
     RequestType("diapers_size_5", "Pañales talla 5 / Baby Diapers Size 5 / 婴儿尿布5号", "toiletries"),
     RequestType("diapers_size_6", "Pañales talla 6 / Baby Diapers Size 6 / 婴儿尿布6号", "toiletries"),
-    RequestType("adult_diapers", "Pañales para adultos / Adult Diapers / 成人尿布", "toiletries"),
-    # Household
-    RequestType("clothing", "Ropa / Clothing / 衣服", "household"),
-    RequestType("school_supplies", "Útiles escolares / School Supplies / 学习用品", "household"),
-    RequestType("stroller", "Coche de bebé / Stroller / 婴儿车", "household"),
-    RequestType("pet_food", "Comida para mascotas / Pet Food / 宠物食品", "household"),
-    RequestType("masks_covid_tests", "Mascarillas y pruebas de COVID / Masks & COVID Tests / 口罩和新冠检测", "household"),
-    # Kitchen
-    RequestType("kitchen_supplies", "Artículos de cocina / Kitchen Supplies / 厨房用品", "kitchen"),
-    RequestType("pots_pans", "Ollas y sartenes / Pots & Pans / 锅碗瓢盆", "kitchen", expiry_days=EXTENDED_EXPIRY_DAYS),
-    RequestType("plates_cups_utensils", "Platos, vasos y cubiertos / Plates, Cups & Utensils / 餐具", "kitchen"),
-    RequestType("microwave", "Microondas / Microwave / 微波炉", "kitchen"),
-    RequestType("coffee_maker", "Cafetera / Coffee Maker / 咖啡机", "kitchen"),
-    RequestType("blender", "Licuadora / Blender / 搅拌机", "kitchen"),
-    # Food
-    RequestType("groceries", "Comida / Groceries / 食品杂货", "food"),
-    RequestType("hot_meals", "Comida caliente / Hot Meals / 热餐", "food"),
-    # Furniture (separate team flow; requests carry a delivery address)
-    RequestType("furniture", "Muebles / Furniture / 家具", "furniture"),
-    RequestType("bed", "Cama / Bed / 床", "furniture"),
 ]
 
-SOCIAL_SERVICES: list[RequestType] = [
-    RequestType("housing", "Vivienda / Housing / 住房", "social_service"),
-    RequestType("health_insurance", "Seguro médico / Health Insurance / 医疗保险", "social_service"),
-    RequestType("english_classes", "Clases de inglés / English Classes / 英语课程", "social_service"),
-    RequestType("transportation", "Transporte / Transportation / 交通", "social_service"),
-    RequestType("tenant_legal", "Ayuda legal para inquilinos / Tenant Legal Support / 租户法律援助", "social_service"),
-    RequestType("in_school_services", "Servicios escolares / In-School Services / 校内服务", "social_service"),
-    RequestType("tutoring", "Tutoría / Tutoring / 辅导", "social_service"),
-    RequestType("business_support", "Apoyo para negocios / Business Support / 商业支持", "social_service"),
-    RequestType("internet", "Internet / Internet / 互联网", "social_service"),
-    RequestType("food_benefits", "Beneficios de alimentos / Food Benefits / 食品补助", "social_service"),
-    RequestType("child_disability", "Discapacidad infantil / Child Disability Support / 儿童残障支持", "social_service"),
-    RequestType("pet_assistance", "Asistencia para mascotas / Pet Assistance / 宠物援助", "social_service"),
-]
-
-ALL_TYPES: list[RequestType] = GOODS + SOCIAL_SERVICES
+ALL_TYPES: list[RequestType] = GOODS + SOCIAL_SERVICES + SPEC_COMPAT
 BY_KEY: dict[str, RequestType] = {t.key: t for t in ALL_TYPES}
 
-#: Item-level names from the current intake forms (background section 5) that
-#: resolve to a broader catalog type. Item detail itself is preserved on the
-#: request notes / raw submission by the intake service.
+#: Alternate names that aren't already a label segment: item-level names
+#: from the current forms plus common shorthand.
 ITEM_ALIASES: dict[str, str] = {
-    "plates": "plates_cups_utensils",
-    "cups": "plates_cups_utensils",
-    "utensils": "plates_cups_utensils",
-    "sofa": "furniture",
-    "dresser": "furniture",
-    "desk": "furniture",
-    "coffee table": "furniture",
-    "chairs": "furniture",
-    "storage": "furniture",
-    "dining table": "furniture",
-    "fridge": "furniture",
-    "ac": "furniture",
+    "dresser": "clothes_dresser",
+    "fridge": "refrigerator",
+    "ac": "air_conditioner",
+    "dining table": "dining_table",
+    "internet": "internet",
+    "diapers": "baby_diapers",
+    "pads/tampons/panty liners": "pads",
+    "pads, tampons & panty liners": "pads",
+}
+
+#: Label segments from earlier form/spec revisions (the spec's section 9
+#: vocabulary, simplified-Chinese variants) that differ from the production
+#: select strings but mean the same type.
+LEGACY_ALIASES: dict[str, str] = {
+    # social services (spec wording)
+    "housing": "housing",
+    "vivienda": "housing",
+    "住房": "housing",
+    "health insurance": "health_insurance",
+    "seguro médico": "health_insurance",
+    "医疗保险": "health_insurance",
+    "transportation": "transportation",
+    "transporte": "transportation",
+    "交通": "transportation",
+    "tenant legal support": "tenant_legal",
+    "ayuda legal para inquilinos": "tenant_legal",
+    "租户法律援助": "tenant_legal",
+    "in-school services": "in_school_services",
+    "servicios escolares": "in_school_services",
+    "校内服务": "in_school_services",
+    "tutoring": "tutoring",
+    "tutoría": "tutoring",
+    "辅导": "tutoring",
+    "business support": "business_support",
+    "apoyo para negocios": "business_support",
+    "商业支持": "business_support",
+    "food benefits": "food_benefits",
+    "beneficios de alimentos": "food_benefits",
+    "食品补助": "food_benefits",
+    "child disability support": "child_disability",
+    "discapacidad infantil": "child_disability",
+    "儿童残障支持": "child_disability",
+    "互联网": "internet",
+    # goods (spec wording / simplified-Chinese variants)
+    "comida": "groceries",
+    "食品杂货": "groceries",
+    "toallas sanitarias, tampones y protectores": "pads",
+    "卫生巾、卫生棉条和护垫": "pads",
+    "卫生巾": "pads",
+    "útiles escolares": "school_supplies",
+    "学习用品": "school_supplies",
+    "衣服": "clothing",
+    "coche de bebé": "stroller",
+    "婴儿车": "stroller",
+    "成人尿布": "adult_diapers",
+    "微波炉": "microwave",
+    "咖啡机": "coffee_maker",
+    "搅拌机": "blender",
+    "锅碗瓢盆": "pots_pans",
+    "热餐": "hot_meals",
+    "hot meals": "hot_meals",
 }
 
 _BY_LABEL_SEGMENT: dict[str, RequestType] = {}
 for _t in ALL_TYPES:
-    _BY_LABEL_SEGMENT[_t.label.lower()] = _t
+    _BY_LABEL_SEGMENT.setdefault(_t.label.lower(), _t)
     for _segment in _t.label.split(" / "):
         _BY_LABEL_SEGMENT.setdefault(_segment.strip().lower(), _t)
-for _alias, _key in ITEM_ALIASES.items():
-    _BY_LABEL_SEGMENT.setdefault(_alias, BY_KEY[_key])
+for _aliases in (ITEM_ALIASES, LEGACY_ALIASES):
+    for _alias, _key in _aliases.items():
+        _BY_LABEL_SEGMENT.setdefault(_alias, BY_KEY[_key])
 
 
 def normalize_type(value: str) -> str | None:
-    """Resolve a key, label segment, or item alias to the canonical key.
+    """Resolve a key, label, label segment, or item alias to the canonical key.
 
-    Trilingual inputs whose full label differs from the catalog's (e.g. a
-    base-specific select like "Mesa de centro / Coffee Table / 咖啡桌") still
-    resolve if any of their segments matches a known segment or alias.
+    Trilingual inputs whose full label differs from the catalog's (an older
+    form revision, a simplified/traditional character variant) still resolve
+    if any of their segments matches a known segment or alias.
     """
     if not value:
         return None

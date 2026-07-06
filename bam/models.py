@@ -84,7 +84,10 @@ class Household(SQLModel, table=True):
     missed_appointment_count: int = 0
 
     last_texted: Optional[date] = None
+    last_called: Optional[date] = None
     last_attended: Optional[date] = None
+    needs_delivery: bool = False
+    needs_email_outreach: bool = False
 
     anonymized_at: Optional[datetime] = None
     airtable_id: Optional[str] = Field(default=None, index=True, unique=True)
