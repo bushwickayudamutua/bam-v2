@@ -120,8 +120,18 @@
     clear(container);
     container.append(heading, form, result);
 
-    // Deep-link support: #checkin?phone=... auto-runs a lookup.
-    if (params && params.phone) {
+    // Deep-link support: #checkin?id=... (from the browse views) loads a
+    // household directly; #checkin?phone=... auto-runs a phone lookup.
+    if (params && params.id) {
+      loadHousehold(params.id).catch((err) => {
+        if (err instanceof api.ApiError && err.status === 404) {
+          renderNotFound(`household ${params.id}`);
+        } else {
+          showError(err);
+          toast(err.detail || "Could not load that household.", "error");
+        }
+      });
+    } else if (params && params.phone) {
       phoneInput.value = params.phone;
       doLookup();
     } else {

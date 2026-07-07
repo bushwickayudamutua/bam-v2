@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from bam.api.routes import (
     automations,
+    browse,
     catalog,
     checkin,
     distros,
@@ -46,6 +47,7 @@ def create_app() -> FastAPI:
     app.include_router(metrics.router)
     app.include_router(catalog.router)
     app.include_router(automations.router)
+    app.include_router(browse.router)
 
     # Serve the operator console. Mounted LAST so it never shadows API routes;
     # "/" redirects into the mounted app.

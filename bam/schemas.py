@@ -109,6 +109,97 @@ class HouseholdMatch(BaseModel):
     languages: list[str] = []
 
 
+# --- Browse / list views (parity with the Airtable Interfaces) --------------
+# Read-only, paginated list rows behind the console's Appointments, Look up,
+# Furniture, and Social Services views. Each row carries just enough to render
+# a list and deep-link into the check-in detail (household_id).
+
+
+class AppointmentRow(BaseModel):
+    """A household booked for a given day (Airtable "Today's Appointments")."""
+
+    household_id: int
+    name: str | None = None
+    phone_number: str | None = None
+    languages: list[str] = []
+    appointment_time: str | None = None
+    appointment_status: AppointmentStatus | None = None
+    open_request_count: int = 0
+
+
+class HouseholdRow(BaseModel):
+    """A household list row (Airtable "Look up")."""
+
+    id: int
+    name: str | None = None
+    phone_number: str | None = None
+    languages: list[str] = []
+    appointment_date: dt.date | None = None
+    appointment_time: str | None = None
+    appointment_status: AppointmentStatus | None = None
+    open_request_count: int = 0
+
+
+class HouseholdPage(BaseModel):
+    items: list[HouseholdRow] = []
+    total: int = 0
+    limit: int = 50
+    offset: int = 0
+
+
+class RequestRow(BaseModel):
+    """A goods request with its household + delivery details (Airtable
+    "Requests"/"Furniture Requests")."""
+
+    id: int
+    type: str
+    label: str
+    category: str | None = None
+    status: RequestStatus
+    request_opened_at: dt.datetime
+    household_id: int
+    household_name: str | None = None
+    household_phone: str | None = None
+    address: str | None = None
+    geocode: str | None = None
+    bin: str | None = None
+    address_accuracy: str | None = None
+    notes: str | None = None
+
+
+class RequestPage(BaseModel):
+    items: list[RequestRow] = []
+    total: int = 0
+    limit: int = 50
+    offset: int = 0
+
+
+class ServiceRow(BaseModel):
+    """A social-service request with mesh detail (Airtable "Social Service
+    Requests"/"MESH requests")."""
+
+    id: int
+    type: str
+    label: str
+    status: RequestStatus
+    request_opened_at: dt.datetime
+    household_id: int
+    household_name: str | None = None
+    household_phone: str | None = None
+    mesh_status: str | None = None
+    bin: str | None = None
+    address_accuracy: str | None = None
+    internet_access: list[str] = []
+    notes: str | None = None
+
+
+class ServicePage(BaseModel):
+    items: list[ServiceRow] = []
+    total: int = 0
+    limit: int = 50
+    offset: int = 0
+
+
 class FulfilledCountOut(BaseModel):
     date: dt.date
     type: str

@@ -174,6 +174,20 @@
       }
       return this._catalogPromise;
     },
+
+    // Browse / list views (parity with the Airtable Interfaces) ------------
+    appointments(date) {
+      return request("GET", `/appointments${qs({ date })}`);
+    },
+    browseHouseholds({ query, limit, offset } = {}) {
+      return request("GET", `/households${qs({ query, limit, offset })}`);
+    },
+    browseRequests({ category, type, status, limit, offset } = {}) {
+      return request("GET", `/requests${qs({ category, type, status, limit, offset })}`);
+    },
+    browseServices({ type, status, limit, offset } = {}) {
+      return request("GET", `/social-service-requests${qs({ type, status, limit, offset })}`);
+    },
   };
 
   window.BAM = window.BAM || {};
