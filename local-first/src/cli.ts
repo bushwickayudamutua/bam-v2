@@ -43,7 +43,15 @@ import { MemorySigner } from "@automerge/automerge-subduction";
 import { NodeFSStorageAdapter } from "@automerge/automerge-repo-storage-nodefs";
 import { DEFAULT_SYNC_ENDPOINT, learnedRelayPeers, openStore } from "./store.ts";
 import type { BamStore } from "./store.ts";
-import { addMember, revokeMember } from "./roster.ts";
+import {
+  addMember,
+  buildInviteUrl,
+  createInvite,
+  parseInviteUrl,
+  revokeInvite,
+  revokeMember,
+  type InvitePayload,
+} from "./roster.ts";
 import type { Role } from "./schema.ts";
 import { importSnapshot } from "./import.ts";
 import { openRequestCounts } from "./domain/metrics.ts";
@@ -193,11 +201,16 @@ async function main(): Promise<void> {
         return;
       }
       if (subcommand === "join") {
-        const rosterUrl = str(flags, "roster");
-        if (!rosterUrl) throw new Error("org join requires --roster <automerge:url>");
-        const endpoint = str(flags, "endpoint") ?? DEFAULT_SYNC_ENDPOINT;
-        let relayPeer = str(flags, "relay-peer");
-        const trustRelay = !!flags["trust-relay"];
+        // QR onboarding: --invite <url|payload> carries everything —
+        // roster URL, endpoint, relay peer, and the pre-authorization.
+        const inviteArg = str(flags, "invite");
+        const payload = inviteArg ? parseInviteUrl(inviteArg) : null;
+        if (inviteArg && !payload) throw new Error("could not parse the invite URL/payload");
+        const rosterUrl = payload?.rosterUrl ?? str(flags, "roster");
+        if (!rosterUrl) throw new Error("org join requires --roster <automerge:url> or --invite <url>");
+        const endpoint = str(flags, "endpoint") ?? payload?.endpoint ?? DEFAULT_SYNC_ENDPOINT;
+        let relayPeer = str(flags, "relay-peer") ?? payload?.relayPeer;
+        const trustRelay = !!flags["trust-relay"] || (!!payload && !relayPeer);
         if (!relayPeer && !trustRelay) {
           throw new Error(
             "org join needs --relay-peer <hex>, or --trust-relay to learn+pin the relay's key on first use"
@@ -211,6 +224,13 @@ async function main(): Promise<void> {
           rosterUrl,
           alwaysAllow: relayPeer ? [relayPeer] : [],
           trustDialedRelays: trustRelay && !relayPeer,
+          invite: payload
+            ? {
+                inviteId: payload.inviteId,
+                secret: payload.secret,
+                deviceName: str(flags, "device-name") ?? "QR-invited device",
+              }
+            : undefined,
         });
         if (!relayPeer && trustRelay) {
           // TOFU: pin the learned relay key for all future (verified) runs.
@@ -220,14 +240,22 @@ async function main(): Promise<void> {
         }
         await saveState(dataDir, { rosterUrl, endpoint, relayPeer });
         print({ joined: store.roster.doc()?.org, rosterUrl, peerId: store.peerId, relayPeer });
-        await new Promise((r) => setTimeout(r, 300));
-        return;
+        // Linger so a QR self-enrollment replicates before exit.
+        await settle(store);
+        process.exit(0);
       }
       throw new Error("usage: org create --name <org> | org join --roster <url>");
     }
 
     case "roster": {
-      const store = await open(dataDir);
+      // Mutating subcommands open with the saved network and linger, so
+      // membership/invite changes replicate to the relay immediately (a
+      // separately-running `sync` daemon has its own in-memory state and
+      // will NOT pick up this process's writes until its next restart —
+      // CRDT merges make the concurrent writes safe).
+      const mutating = ["add", "revoke", "invite", "revoke-invite"].includes(subcommand ?? "");
+      const store = mutating ? await openWithSavedNetwork(dataDir) : await open(dataDir);
+      if (mutating) await settle(store);
       if (subcommand === "list" || subcommand === undefined) {
         const roster = store.roster.doc();
         print({
@@ -249,18 +277,59 @@ async function main(): Promise<void> {
         const role = (str(flags, "role") ?? "volunteer") as Role;
         addMember(store.roster, store.peerId, { peerId: peer, name, role });
         print({ added: peer, role });
-        await new Promise((r) => setTimeout(r, 300));
-        return;
+        await settle(store);
+        process.exit(0);
       }
       if (subcommand === "revoke") {
         const peer = str(flags, "peer");
         if (!peer) throw new Error("roster revoke requires --peer <hex>");
         revokeMember(store.roster, store.peerId, peer);
         print({ revoked: peer });
-        await new Promise((r) => setTimeout(r, 300));
-        return;
+        await settle(store);
+        process.exit(0);
       }
-      throw new Error("usage: roster list | add --peer … --name … [--role …] | revoke --peer …");
+      if (subcommand === "invite") {
+        const name = str(flags, "name");
+        if (!name) throw new Error('roster invite requires --name "July distro volunteers"');
+        const state = await loadState(dataDir);
+        const { invite, secret } = createInvite(store.roster, store.peerId, {
+          name,
+          expiresInDays: flags["expires-days"] ? Number(flags["expires-days"]) : undefined,
+          maxUses: flags["max-uses"] ? Number(flags["max-uses"]) : undefined,
+        });
+        const payload: InvitePayload = {
+          v: 1,
+          org: store.roster.doc()?.org,
+          rosterUrl: store.roster.url,
+          endpoint: str(flags, "endpoint") ?? state.endpoint ?? DEFAULT_SYNC_ENDPOINT,
+          relayPeer: str(flags, "relay-peer") ?? state.relayPeer,
+          inviteId: invite.id,
+          secret,
+        };
+        const consoleUrl = str(flags, "console-url") ?? "https://ronturetzky.github.io/bam-local-first-demo/";
+        const url = buildInviteUrl(consoleUrl, payload);
+        const qrcode = await import("qrcode");
+        console.error(await qrcode.toString(url, { type: "terminal", small: true }));
+        print({
+          invite: { id: invite.id, name: invite.name, expiresAt: invite.expiresAt, maxUses: invite.maxUses },
+          url,
+          note: "The URL/QR is a bearer credential — anyone who scans it joins as a volunteer until it expires or is revoked (roster revoke-invite).",
+        });
+        await settle(store);
+        process.exit(0);
+      }
+      if (subcommand === "revoke-invite") {
+        const inviteId = str(flags, "invite");
+        if (!inviteId) throw new Error("roster revoke-invite requires --invite <id>");
+        revokeInvite(store.roster, store.peerId, inviteId);
+        print({ revokedInvite: inviteId });
+        await settle(store);
+        process.exit(0);
+      }
+      throw new Error(
+        "usage: roster list | add --peer … --name … [--role …] | revoke --peer … | " +
+          'invite --name "…" [--expires-days N --max-uses N --console-url URL] | revoke-invite --invite <id>'
+      );
     }
 
     case "import": {

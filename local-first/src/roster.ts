@@ -26,8 +26,8 @@
  */
 
 import type { DocHandle } from "@automerge/automerge-repo";
-import type { RosterDoc, RosterMember, Role } from "./schema.ts";
-import { nowIso } from "./schema.ts";
+import type { RosterDoc, RosterInvite, RosterMember, Role } from "./schema.ts";
+import { newId, nowIso } from "./schema.ts";
 
 /** Structural type of @automerge/automerge-subduction's Policy interface. */
 export interface SubductionPolicyLike {
@@ -39,16 +39,84 @@ export interface SubductionPolicyLike {
 
 export class NotAuthorized extends Error {}
 
+/** sha256 hex — invite tokenHash validation. Sync (pure JS) so the policy
+ * hooks and isActiveMember stay synchronous. */
+export function sha256Hex(text: string): string {
+  // Minimal SHA-256 (FIPS 180-4), operating on UTF-8 bytes.
+  const bytes = new TextEncoder().encode(text);
+  const K = [
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+  ];
+  const H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+  const len = bytes.length;
+  const bitLen = len * 8;
+  const padded = new Uint8Array(((len + 8) >> 6 << 6) + 64);
+  padded.set(bytes);
+  padded[len] = 0x80;
+  new DataView(padded.buffer).setUint32(padded.length - 4, bitLen >>> 0);
+  new DataView(padded.buffer).setUint32(padded.length - 8, Math.floor(bitLen / 0x100000000));
+  const w = new Int32Array(64);
+  const rr = (x: number, n: number): number => (x >>> n) | (x << (32 - n));
+  for (let off = 0; off < padded.length; off += 64) {
+    const view = new DataView(padded.buffer, off, 64);
+    for (let i = 0; i < 16; i++) w[i] = view.getUint32(i * 4);
+    for (let i = 16; i < 64; i++) {
+      const s0 = rr(w[i - 15]!, 7) ^ rr(w[i - 15]!, 18) ^ (w[i - 15]! >>> 3);
+      const s1 = rr(w[i - 2]!, 17) ^ rr(w[i - 2]!, 19) ^ (w[i - 2]! >>> 10);
+      w[i] = (w[i - 16]! + s0 + w[i - 7]! + s1) | 0;
+    }
+    let [a, b, c, d, e, f, g, h] = H as [number, number, number, number, number, number, number, number];
+    for (let i = 0; i < 64; i++) {
+      const S1 = rr(e, 6) ^ rr(e, 11) ^ rr(e, 25);
+      const ch = (e & f) ^ (~e & g);
+      const t1 = (h + S1 + ch + K[i]! + w[i]!) | 0;
+      const S0 = rr(a, 2) ^ rr(a, 13) ^ rr(a, 22);
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const t2 = (S0 + maj) | 0;
+      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+    }
+    H[0] = (H[0]! + a) | 0; H[1] = (H[1]! + b) | 0; H[2] = (H[2]! + c) | 0; H[3] = (H[3]! + d) | 0;
+    H[4] = (H[4]! + e) | 0; H[5] = (H[5]! + f) | 0; H[6] = (H[6]! + g) | 0; H[7] = (H[7]! + h) | 0;
+  }
+  return H.map((x) => (x >>> 0).toString(16).padStart(8, "0")).join("");
+}
+
+/** Is a member's QR-invite self-enrollment valid against the invites map? */
+function inviteEnrollmentValid(roster: RosterDoc, member: RosterMember): boolean {
+  if (!member.inviteId) return true; // admin-added, nothing to validate
+  const invite = roster.invites?.[member.inviteId];
+  if (!invite || !member.inviteProof) return false;
+  if (sha256Hex(member.inviteProof) !== invite.tokenHash) return false;
+  if (member.addedAt > invite.expiresAt) return false;
+  // Revoking an invite stops NEW redemptions; members who joined before the
+  // revocation stay (revoke them individually if needed).
+  if (invite.revokedAt && member.addedAt > invite.revokedAt) return false;
+  // QR invites can never grant more than the invite's role (volunteer).
+  if (member.role !== invite.role) return false;
+  return true;
+}
+
 export function isActiveMember(roster: RosterDoc | undefined, peerId: string): boolean {
   if (!roster) return false;
   const member = roster.members[peerId];
-  return !!member && !member.revokedAt;
+  if (!member || member.revokedAt) return false;
+  return inviteEnrollmentValid(roster, member);
 }
 
 export function isAdmin(roster: RosterDoc | undefined, peerId: string): boolean {
   if (!roster) return false;
   const member = roster.members[peerId];
-  return !!member && !member.revokedAt && member.role === "admin";
+  // isActiveMember includes invite validation, which (among other things)
+  // forces invite-enrolled members to the invite's role — so a forged
+  // self-enrollment claiming "admin" fails here, not just at sync time.
+  return isActiveMember(roster, peerId) && member?.role === "admin";
 }
 
 export interface RosterPolicyOptions {
@@ -169,4 +237,167 @@ export function revokeMember(
     member.revokedAt = now;
     member.revokedBy = actor;
   });
+}
+
+/* QR invites — bearer-credential onboarding ------------------------------ */
+
+function randomSecret(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export interface CreateInviteOptions {
+  /** Label shown in the roster view, e.g. "July distro volunteers". */
+  name: string;
+  /** Days until redemptions stop working. Default 7. */
+  expiresInDays?: number;
+  /** Soft redemption cap (honest-client enforced). Default 20. */
+  maxUses?: number;
+}
+
+/**
+ * Admin action: mint a QR invite. Returns the SECRET — it exists only in
+ * this return value (and the QR/link built from it); the roster stores its
+ * sha256. Role is always "volunteer": admin rights are never QR-grantable.
+ */
+export function createInvite(
+  handle: DocHandle<RosterDoc>,
+  actor: string,
+  opts: CreateInviteOptions,
+  now: string = nowIso()
+): { invite: RosterInvite; secret: string } {
+  if (!isAdmin(handle.doc(), actor)) {
+    throw new NotAuthorized(`peer ${actor} is not an active admin`);
+  }
+  const secret = randomSecret();
+  const expiresAt = new Date(
+    new Date(now).getTime() + (opts.expiresInDays ?? 7) * 86_400_000
+  ).toISOString();
+  const invite: RosterInvite = {
+    id: newId(),
+    name: opts.name,
+    tokenHash: sha256Hex(secret),
+    role: "volunteer",
+    createdBy: actor,
+    createdAt: now,
+    expiresAt,
+    maxUses: opts.maxUses ?? 20,
+  };
+  handle.change((d) => {
+    if (!d.invites) d.invites = {};
+    d.invites[invite.id] = invite;
+  });
+  return { invite, secret };
+}
+
+/** Admin action: stop future redemptions of an invite (existing members
+ * who joined before the revocation keep their access). */
+export function revokeInvite(
+  handle: DocHandle<RosterDoc>,
+  actor: string,
+  inviteId: string,
+  now: string = nowIso()
+): void {
+  if (!isAdmin(handle.doc(), actor)) {
+    throw new NotAuthorized(`peer ${actor} is not an active admin`);
+  }
+  handle.change((d) => {
+    const invite = d.invites?.[inviteId];
+    if (!invite) throw new Error(`no invite ${inviteId}`);
+    invite.revokedAt = now;
+    invite.revokedBy = actor;
+  });
+}
+
+/**
+ * Self-enrollment: a scanning device redeems an invite secret and writes
+ * its own volunteer entry. Every replica re-validates the entry against the
+ * invite's tokenHash/expiry/revocation (see inviteEnrollmentValid), so a
+ * bogus proof never grants access on compliant peers. `maxUses` is
+ * enforced here (honest clients) and is visible to admins; a modified
+ * client exceeding it is the same threat model as any roster write today.
+ */
+export function redeemInvite(
+  handle: DocHandle<RosterDoc>,
+  peerId: string,
+  args: { inviteId: string; secret: string; deviceName: string },
+  now: string = nowIso()
+): RosterMember {
+  const doc = handle.doc();
+  const invite = doc?.invites?.[args.inviteId];
+  if (!invite) throw new NotAuthorized(`no such invite ${args.inviteId}`);
+  if (sha256Hex(args.secret) !== invite.tokenHash) {
+    throw new NotAuthorized("invite secret does not match");
+  }
+  if (invite.revokedAt && now > invite.revokedAt) {
+    throw new NotAuthorized("invite has been revoked");
+  }
+  if (now > invite.expiresAt) throw new NotAuthorized("invite has expired");
+  const uses = Object.values(doc?.members ?? {}).filter(
+    (m) => m.inviteId === args.inviteId
+  ).length;
+  const existing = doc?.members?.[peerId];
+  if (!existing && uses >= invite.maxUses) {
+    throw new NotAuthorized("invite is used up");
+  }
+  handle.change((d) => {
+    const entry: RosterMember = {
+      peerId,
+      name: args.deviceName,
+      role: invite.role,
+      addedBy: `invite:${invite.id}`,
+      addedAt: now,
+      inviteId: invite.id,
+      inviteProof: args.secret,
+    };
+    d.members[peerId] = entry;
+  });
+  return handle.doc()!.members[peerId]!;
+}
+
+/* Invite links ------------------------------------------------------------ */
+
+export interface InvitePayload {
+  v: 1;
+  org?: string;
+  rosterUrl: string;
+  endpoint?: string;
+  relayPeer?: string;
+  inviteId: string;
+  secret: string;
+}
+
+function base64UrlEncode(text: string): string {
+  const b64 = (typeof btoa === "function"
+    ? btoa(unescape(encodeURIComponent(text)))
+    : Buffer.from(text, "utf-8").toString("base64"));
+  return b64.replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
+function base64UrlDecode(encoded: string): string {
+  const b64 = encoded.replaceAll("-", "+").replaceAll("_", "/");
+  return typeof atob === "function"
+    ? decodeURIComponent(escape(atob(b64)))
+    : Buffer.from(b64, "base64").toString("utf-8");
+}
+
+/** The URL a QR code encodes: `<consoleUrl>#invite=<base64url(payload)>`. */
+export function buildInviteUrl(consoleUrl: string, payload: InvitePayload): string {
+  const base = consoleUrl.replace(/#.*$/, "");
+  return `${base}#invite=${base64UrlEncode(JSON.stringify(payload))}`;
+}
+
+/** Parse an invite from a full URL, a fragment, or a bare payload string. */
+export function parseInviteUrl(input: string): InvitePayload | null {
+  const match = input.match(/#invite=([A-Za-z0-9_-]+)/);
+  const encoded = match ? match[1]! : input.trim();
+  try {
+    const payload = JSON.parse(base64UrlDecode(encoded)) as InvitePayload;
+    if (payload && payload.v === 1 && payload.rosterUrl && payload.secret && payload.inviteId) {
+      return payload;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }

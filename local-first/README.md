@@ -194,3 +194,31 @@ The single-file build forces the `import` resolve condition
 internally-consistent `web.js` glue; the default `browser` entry
 (`bundler.js`) mixes glue instances and throws "expected instance of Topic"
 on ephemeral subscribe.
+
+## QR volunteer onboarding
+
+Admins can onboard a volunteer with **one QR scan** — no peer-id exchange,
+no manual roster step for each device:
+
+1. Admin (Roster view → *QR invite*, or `bam-lf roster invite --name "July
+   distro"`): mints an invite — a random secret whose **sha256 lives in the
+   roster doc** with a role (always `volunteer`), an expiry (default 7
+   days), a use cap (default 20), and revocability. The QR encodes the
+   console URL + roster URL + relay endpoint + the secret.
+2. Volunteer scans it → the console opens with a one-field screen ("You're
+   invited to BAM — your name?") → tap **Join**.
+3. The device mints its Ed25519 key, syncs the roster, and **self-enrolls**
+   with the secret as proof. Every replica validates the enrollment
+   (`sha256(proof) == invite.tokenHash`, within expiry, invite not revoked,
+   role == the invite's role) — so a forged entry, a wrong secret, or a
+   self-granted `admin` role is rejected by every compliant peer.
+
+Security posture, plainly: **the QR is a bearer credential** (like a Signal
+group link). Anyone who scans it before expiry/revocation joins as a
+volunteer. Treat it like a key: short expiry, revoke after the onboarding
+session (`roster revoke-invite`), and admin rights are never QR-grantable.
+Verified end-to-end in real browsers: admin mints the QR in one profile, a
+fresh profile opens the link, names itself, and appears on the admin's
+roster as a volunteer — through a live relay, and through the
+StatiCrypt-gated deployed demo (the `#invite=` fragment survives the
+password gate).

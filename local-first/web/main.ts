@@ -11,6 +11,7 @@
 import { WebCryptoSigner } from "@automerge/automerge-subduction";
 import { IndexedDBStorageAdapter } from "@automerge/automerge-repo-storage-indexeddb";
 import { learnedRelayPeers, openStore, type BamStore } from "../src/store.ts";
+import { parseInviteUrl, type InvitePayload } from "../src/roster.ts";
 import { makeWebApi } from "../src/webapi.ts";
 import { registerRosterView } from "../src/roster-view.ts";
 import { LANGUAGES } from "../src/domain/catalog.ts";
@@ -78,6 +79,10 @@ function firstRunScreen(root: HTMLElement, peerId: string): Promise<AppConfig> {
     wrap.append(idNote, idBox);
 
     const orgName = el("input", { class: "input", placeholder: "Org name (e.g. BAM)" });
+    const createEndpoint = el("input", {
+      class: "input",
+      placeholder: "wss://relay… (optional — needed to sync/invite other devices)",
+    });
     const createBtn = el("button", { class: "btn btn-primary btn-block" }, "Create a new org on this device");
 
     const rosterUrl = el("input", { class: "input", placeholder: "automerge:… roster URL" });
@@ -86,7 +91,12 @@ function firstRunScreen(root: HTMLElement, peerId: string): Promise<AppConfig> {
     const joinBtn = el("button", { class: "btn btn-block" }, "Join an existing org");
 
     createBtn.onclick = () => {
-      resolve({ mode: "create", orgName: orgName.value.trim() || "BAM" });
+      resolve({
+        mode: "create",
+        orgName: orgName.value.trim() || "BAM",
+        // TOFU applies when an endpoint is set with no pinned relay key.
+        endpoint: createEndpoint.value.trim() || undefined,
+      });
     };
     joinBtn.onclick = () => {
       if (!rosterUrl.value.trim().startsWith("automerge:")) {
@@ -109,6 +119,7 @@ function firstRunScreen(root: HTMLElement, peerId: string): Promise<AppConfig> {
     wrap.append(
       el("h3", { class: "card__title", style: "font-size:14px;margin-top:12px" }, "Create"),
       orgName,
+      createEndpoint,
       createBtn,
       el("h3", { class: "card__title", style: "font-size:14px;margin-top:12px" }, "Join"),
       rosterUrl,
@@ -142,12 +153,73 @@ function runInlineScript(code: string): void {
   document.body.append(script);
 }
 
+/** QR onboarding: `#invite=…` in the URL → one-field join screen. */
+async function inviteScreen(
+  root: HTMLElement,
+  payload: InvitePayload
+): Promise<{ config: AppConfig; deviceName: string }> {
+  return new Promise((resolve) => {
+    root.innerHTML = "";
+    const card = document.createElement("div");
+    card.className = "card stack";
+    card.style.cssText = "max-width:480px;margin:48px auto";
+    card.innerHTML = `
+      <h2 class="card__title">You're invited to ${payload.org ?? "a BAM org"} 🎉</h2>
+      <p class="muted" style="margin:0">Scanning this code enrolls this device as a <b>volunteer</b>.
+      Pick a name so the team knows whose device this is:</p>
+      <div class="field">
+        <label class="label" for="invite-device-name">Your name</label>
+        <input class="input" id="invite-device-name" placeholder="e.g. Rosa — personal phone" autocomplete="off">
+      </div>
+      <button class="btn btn-primary btn-block" id="invite-join-btn">Join as a volunteer</button>`;
+    root.append(card);
+    const input = card.querySelector<HTMLInputElement>("#invite-device-name")!;
+    const btn = card.querySelector<HTMLButtonElement>("#invite-join-btn")!;
+    input.focus();
+    const go = (): void => {
+      const deviceName = input.value.trim();
+      if (!deviceName) {
+        input.focus();
+        return;
+      }
+      resolve({
+        config: {
+          mode: "join",
+          rosterUrl: payload.rosterUrl,
+          endpoint: payload.endpoint,
+          relayPeer: payload.relayPeer,
+        },
+        deviceName,
+      });
+    };
+    btn.onclick = go;
+    input.onkeydown = (e) => {
+      if (e.key === "Enter") go();
+    };
+  });
+}
+
 async function boot(): Promise<void> {
   const root = document.getElementById("boot-root")!;
   const signer = await WebCryptoSigner.setup();
   const peerId = signer.peerId().toString();
 
+  // QR onboarding: a fresh device opened an invite link.
+  const invitePayload = parseInviteUrl(location.hash);
+  let inviteRedemption: { inviteId: string; secret: string; deviceName: string } | undefined;
+
   let config = loadConfig();
+  if (!config && invitePayload) {
+    const joined = await inviteScreen(root, invitePayload);
+    config = joined.config;
+    inviteRedemption = {
+      inviteId: invitePayload.inviteId,
+      secret: invitePayload.secret,
+      deviceName: joined.deviceName,
+    };
+    // Drop the credential from the address bar/history once consumed.
+    history.replaceState(null, "", location.pathname + location.search);
+  }
   if (!config) {
     config = await firstRunScreen(root, peerId);
   }
@@ -162,6 +234,7 @@ async function boot(): Promise<void> {
     store = await openStore({
       signer,
       storage,
+      invite: inviteRedemption,
       endpoints: config.endpoint ? [config.endpoint] : [],
       alwaysAllow: config.relayPeer ? [config.relayPeer] : [],
       trustDialedRelays: tofu,

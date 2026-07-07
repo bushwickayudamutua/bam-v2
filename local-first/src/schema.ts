@@ -130,8 +130,37 @@ export interface RosterMember {
   peerId: string;
   name: string;
   role: Role;
-  addedBy: string; // PeerId hex
+  addedBy: string; // PeerId hex, or "invite:<inviteId>" for self-enrollment
   addedAt: string; // ISO datetime
+  revokedAt?: string;
+  revokedBy?: string;
+  /** Set when self-enrolled via a QR invite. */
+  inviteId?: string;
+  /** The invite secret (preimage of the invite's tokenHash) — replicas
+   * validate sha256(inviteProof) === invite.tokenHash. Visible to roster
+   * members only; invites are short-lived and revocable. */
+  inviteProof?: string;
+}
+
+/**
+ * A QR-invite: a bearer credential minted by an admin. The SECRET travels
+ * only inside the QR/link; the roster stores its sha256 so every replica
+ * can validate self-enrollments without being able to mint new ones.
+ */
+export interface RosterInvite {
+  id: string;
+  /** Label shown in the roster view, e.g. "July distro volunteers". */
+  name: string;
+  /** sha256 hex of the invite secret. */
+  tokenHash: string;
+  /** Always "volunteer" — admin roles are never grantable by QR. */
+  role: Role;
+  createdBy: string; // admin PeerId hex
+  createdAt: string;
+  expiresAt: string; // ISO datetime; redemptions after this are invalid
+  /** Soft cap, enforced at redemption time by honest clients and visible
+   * to admins (see roster.ts for the trust discussion). */
+  maxUses: number;
   revokedAt?: string;
   revokedBy?: string;
 }
@@ -141,6 +170,8 @@ export interface RosterDoc {
   createdAt: string;
   /** keyed by PeerId hex */
   members: { [peerId: string]: RosterMember };
+  /** QR-invites, keyed by invite id. */
+  invites?: { [inviteId: string]: RosterInvite };
   /**
    * The Automerge URL of the base document, so a newly-invited device only
    * needs the roster URL + relay endpoint to find everything.

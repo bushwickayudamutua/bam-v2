@@ -20,10 +20,12 @@
     "@automerge/automerge-repo-network-messagechannel": "2.6.0-subduction.40",
     "@automerge/automerge-repo-storage-indexeddb": "2.6.0-subduction.40",
     "@automerge/automerge-repo-storage-nodefs": "2.6.0-subduction.40",
-    "@automerge/automerge-subduction": "0.16.0"
+    "@automerge/automerge-subduction": "0.16.0",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",
+    "@types/qrcode": "^1.5.6",
     "playwright-core": "^1.61.1",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",

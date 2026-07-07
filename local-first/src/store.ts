@@ -21,7 +21,7 @@ import { Repo, initSubduction } from "@automerge/automerge-repo";
 import type { DocHandle, StorageAdapterInterface } from "@automerge/automerge-repo";
 import { emptyBamDoc, emptyRosterDoc, nowIso } from "./schema.ts";
 import type { BamDoc, RosterDoc } from "./schema.ts";
-import { addMember, rosterPolicy } from "./roster.ts";
+import { addMember, isActiveMember, redeemInvite, rosterPolicy } from "./roster.ts";
 
 /** Matches the Signer interface of @automerge/automerge-subduction. */
 export interface SignerLike {
@@ -53,6 +53,12 @@ export interface OpenStoreOptions {
    * capture the learned id via `learnedRelayPeers` and pin it afterwards.
    */
   trustDialedRelays?: boolean;
+  /**
+   * QR-invite self-enrollment: when joining and this device isn't on the
+   * roster yet, redeem the invite (validated against the invite's
+   * tokenHash/expiry by every replica) and enroll as a volunteer.
+   */
+  invite?: { inviteId: string; secret: string; deviceName: string };
 }
 
 export interface BamStore {
@@ -107,6 +113,11 @@ export async function openStore(opts: OpenStoreOptions): Promise<BamStore> {
     // unavailable before the relay link is even up, so retry with backoff.
     roster = await findWithRetry<RosterDoc>(repo, opts.rosterUrl);
     box.roster = roster;
+    // QR onboarding: not on the roster yet + holding an invite -> redeem
+    // it (self-enroll as volunteer; replicas validate the proof).
+    if (opts.invite && !isActiveMember(roster.doc(), peerId)) {
+      redeemInvite(roster, peerId, opts.invite, now);
+    }
     const baseUrl = roster.doc()?.baseDocUrl;
     if (!baseUrl) throw new Error("roster has no baseDocUrl (org not fully initialized)");
     base = await findWithRetry<BamDoc>(repo, baseUrl);

@@ -7,8 +7,18 @@
  * component classes as every other view.
  */
 
+import QRCode from "qrcode";
+
 import type { BamStore } from "./store.ts";
-import { addMember, revokeMember, isAdmin } from "./roster.ts";
+import {
+  addMember,
+  buildInviteUrl,
+  createInvite,
+  isAdmin,
+  revokeInvite,
+  revokeMember,
+  type InvitePayload,
+} from "./roster.ts";
 import type { Role } from "./schema.ts";
 
 interface BamNamespace {
@@ -184,7 +194,150 @@ export function registerRosterView(store: BamStore): void {
           h("div", { class: "empty-state" }, h("div", {}, "Only admins can enroll or revoke devices."))
         );
 
+    // ---- QR invites (admin): scan-to-onboard volunteers -------------------
+    const inviteNameInput = h("input", {
+      class: "input",
+      id: "invite-name",
+      placeholder: 'e.g. "July distro volunteers"',
+    }) as HTMLInputElement;
+    const inviteDaysInput = h("input", {
+      class: "input",
+      id: "invite-days",
+      type: "number",
+      value: "7",
+    }) as HTMLInputElement;
+    const inviteUsesInput = h("input", {
+      class: "input",
+      id: "invite-uses",
+      type: "number",
+      value: "20",
+    }) as HTMLInputElement;
+    const inviteResult = h("div", { class: "stack" });
+
+    const invitesList = () => {
+      const invites = Object.values(store.roster.doc()?.invites ?? {});
+      if (!invites.length) return null;
+      return h(
+        "ul",
+        { class: "list" },
+        invites.map((inv) =>
+          h(
+            "li",
+            { class: "list-item" },
+            h(
+              "div",
+              { class: "list-item__body" },
+              h("div", { class: "list-item__label" }, inv.name),
+              h(
+                "div",
+                { class: "list-item__meta" },
+                `expires ${BAM.fmtDateTime(inv.expiresAt)} · max ${inv.maxUses} uses · ` +
+                  `${Object.values(store.roster.doc()?.members ?? {}).filter((m) => m.inviteId === inv.id).length} joined` +
+                  (inv.revokedAt ? " · REVOKED" : "")
+              )
+            ),
+            !inv.revokedAt && admin
+              ? h(
+                  "button",
+                  {
+                    class: "btn btn-danger",
+                    onclick: () => {
+                      try {
+                        revokeInvite(store.roster, store.peerId, inv.id);
+                        toast("Invite revoked — no new devices can use it.", "success");
+                        render(container);
+                      } catch (err) {
+                        toast(err instanceof Error ? err.message : String(err), "error");
+                      }
+                    },
+                  },
+                  "Revoke"
+                )
+              : null
+          )
+        )
+      );
+    };
+
+    const makeInvite = async (): Promise<void> => {
+      const name = inviteNameInput.value.trim();
+      if (!name) {
+        toast("Give the invite a name.", "error");
+        return;
+      }
+      try {
+        const { invite, secret } = createInvite(store.roster, store.peerId, {
+          name,
+          expiresInDays: Number(inviteDaysInput.value) || 7,
+          maxUses: Number(inviteUsesInput.value) || 20,
+        });
+        const config = JSON.parse(localStorage.getItem("bam-local-first-config") ?? "{}") as {
+          endpoint?: string;
+          relayPeer?: string;
+        };
+        const payload: InvitePayload = {
+          v: 1,
+          org: store.roster.doc()?.org,
+          rosterUrl: store.roster.url,
+          endpoint: config.endpoint,
+          relayPeer: config.relayPeer,
+          inviteId: invite.id,
+          secret,
+        };
+        const url = buildInviteUrl(location.origin + location.pathname, payload);
+        const canvas = document.createElement("canvas");
+        await QRCode.toCanvas(canvas, url, { width: 280, margin: 1 });
+        clear(inviteResult);
+        inviteResult.append(
+          h("div", { class: "list-item__meta" }, `Scan to join "${roster.org}" as a volunteer:`),
+          canvas,
+          h(
+            "button",
+            {
+              class: "btn",
+              onclick: () => {
+                void navigator.clipboard.writeText(url).then(() => toast("Invite link copied.", "success"));
+              },
+            },
+            "Copy invite link"
+          ),
+          h(
+            "div",
+            { class: "note" },
+            "This QR/link is a bearer credential: anyone who scans it joins as a volunteer until it expires or you revoke it. Share it like a key."
+          )
+        );
+        toast("Invite created.", "success");
+      } catch (err) {
+        toast(err instanceof Error ? err.message : String(err), "error");
+      }
+    };
+
+    const inviteCard = admin
+      ? h(
+          "div",
+          { class: "card stack" },
+          h("h2", { class: "card__title" }, "QR invite — scan to onboard"),
+          h(
+            "p",
+            { class: "muted", style: { margin: "0" } },
+            "Mint a QR code that pre-authorizes new volunteer devices: scan → name yourself → enrolled."
+          ),
+          h("div", { class: "field" }, h("label", { class: "label", for: "invite-name" }, "Invite name"), inviteNameInput),
+          h(
+            "div",
+            { class: "row" },
+            h("div", { class: "field grow" }, h("label", { class: "label", for: "invite-days" }, "Expires (days)"), inviteDaysInput),
+            h("div", { class: "field grow" }, h("label", { class: "label", for: "invite-uses" }, "Max uses"), inviteUsesInput)
+          ),
+          h("button", { class: "btn btn-primary btn-block", onclick: () => void makeInvite() }, "Create QR invite"),
+          inviteResult,
+          invitesList()
+        )
+      : null;
+
     container.append(heading, me, membersCard, addCard);
+    if (inviteCard) container.append(inviteCard);
   }
 
   BAM.registerView("roster", { title: "Roster", icon: "🔑", render });
