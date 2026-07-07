@@ -17,8 +17,9 @@ import type {
   RequestRow,
   SocialServiceRequestRow,
 } from "./schema.ts";
-import { newId, nowIso } from "./schema.ts";
+import { newId, nowIso, localDate } from "./schema.ts";
 import {
+  BY_KEY,
   GOODS,
   LANGUAGES,
   SOCIAL_SERVICES,
@@ -116,6 +117,45 @@ function wrap<T>(fn: () => T): T {
     throw new ApiError(/unknown/i.test(message) ? 404 : 400, message);
   }
 }
+
+// --- Browse helpers (parity with bam/services/browse.py) --------------------
+
+function categoryOf(type: string): string | null {
+  return BY_KEY[type]?.category ?? null;
+}
+
+/** Minutes-since-midnight for an "11:00 AM" display string, so the check-in
+ * queue sorts chronologically (a raw string sort puts "11:00 AM" first).
+ * Unset sorts last; present-but-unparseable sorts just before that. */
+function timeSortKey(appointmentTime?: string): number {
+  if (!appointmentTime) return 24 * 60 + 1;
+  const m = appointmentTime.trim().toUpperCase().match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$/);
+  if (!m) return 24 * 60;
+  let hour = parseInt(m[1]!, 10);
+  const min = m[2] ? parseInt(m[2], 10) : 0;
+  if (m[3] === "PM" && hour !== 12) hour += 12;
+  if (m[3] === "AM" && hour === 12) hour = 0;
+  return hour * 60 + min;
+}
+
+function clampPage(limit?: number, offset?: number): [number, number] {
+  return [
+    Math.max(1, Math.min(Number(limit ?? 50), 200)),
+    Math.max(0, Number(offset ?? 0)),
+  ];
+}
+
+/** Open goods + social-service request counts, keyed by household id. */
+function openCounts(doc: BamDoc): Map<string, number> {
+  const counts = new Map<string, number>();
+  const bump = (hid: string) => counts.set(hid, (counts.get(hid) ?? 0) + 1);
+  for (const r of Object.values(doc.requests)) if (r.status === "Open") bump(r.householdId);
+  for (const r of Object.values(doc.socialServiceRequests)) if (r.status === "Open") bump(r.householdId);
+  return counts;
+}
+
+const byName = (a: { name?: string }, b: { name?: string }) =>
+  (a.name ?? "").toLowerCase().localeCompare((b.name ?? "").toLowerCase());
 
 /** Build the `BAM.api`-compatible adapter over an open store. */
 export function makeWebApi(store: BamStore) {
@@ -338,6 +378,119 @@ export function makeWebApi(store: BamStore) {
         social_services: SOCIAL_SERVICES.map(entry),
         languages: [...LANGUAGES],
       };
+    },
+
+    // Browse / list views (parity with the Airtable Interfaces) ------------
+    async appointments(date?: string) {
+      const d = doc();
+      const day = date || localDate(nowIso());
+      const counts = openCounts(d);
+      return Object.values(d.households)
+        .filter((h) => h.appointmentDate === day)
+        .sort((a, b) => timeSortKey(a.appointmentTime) - timeSortKey(b.appointmentTime) || byName(a, b))
+        .map((h) => ({
+          household_id: h.id,
+          name: h.name ?? null,
+          phone_number: h.phoneNumber ?? null,
+          languages: h.languages,
+          appointment_time: h.appointmentTime ?? null,
+          appointment_status: h.appointmentStatus ?? null,
+          open_request_count: counts.get(h.id) ?? 0,
+        }));
+    },
+
+    async browseHouseholds(
+      params: { query?: string; limit?: number; offset?: number } = {}
+    ) {
+      const d = doc();
+      const [limit, offset] = clampPage(params.limit, params.offset);
+      const q = (params.query ?? "").trim().toLowerCase();
+      let all = Object.values(d.households);
+      if (q) {
+        all = all.filter(
+          (h) =>
+            (h.name ?? "").toLowerCase().includes(q) ||
+            (h.phoneNumber ?? "").toLowerCase().includes(q)
+        );
+      }
+      all.sort(byName);
+      const total = all.length;
+      const counts = openCounts(d);
+      const items = all.slice(offset, offset + limit).map((h) => ({
+        id: h.id,
+        name: h.name ?? null,
+        phone_number: h.phoneNumber ?? null,
+        languages: h.languages,
+        appointment_date: h.appointmentDate ?? null,
+        appointment_time: h.appointmentTime ?? null,
+        appointment_status: h.appointmentStatus ?? null,
+        open_request_count: counts.get(h.id) ?? 0,
+      }));
+      return { items, total, limit, offset };
+    },
+
+    async browseRequests(
+      params: { category?: string; type?: string; status?: string; limit?: number; offset?: number } = {}
+    ) {
+      const d = doc();
+      const [limit, offset] = clampPage(params.limit, params.offset);
+      let all = Object.values(d.requests);
+      if (params.category) all = all.filter((r) => categoryOf(r.type) === params.category);
+      if (params.type) all = all.filter((r) => r.type === params.type);
+      if (params.status) all = all.filter((r) => r.status === params.status);
+      all.sort((a, b) => b.requestOpenedAt.localeCompare(a.requestOpenedAt));
+      const total = all.length;
+      const items = all.slice(offset, offset + limit).map((r) => {
+        const h = d.households[r.householdId];
+        return {
+          id: r.id,
+          type: r.type,
+          label: labelFor(r.type),
+          category: categoryOf(r.type),
+          status: r.status,
+          request_opened_at: r.requestOpenedAt,
+          household_id: r.householdId,
+          household_name: h?.name ?? null,
+          household_phone: h?.phoneNumber ?? null,
+          address: r.address ?? null,
+          geocode: r.geocode ?? null,
+          bin: r.bin ?? null,
+          address_accuracy: r.addressAccuracy ?? null,
+          notes: r.notes ?? null,
+        };
+      });
+      return { items, total, limit, offset };
+    },
+
+    async browseServices(
+      params: { type?: string; status?: string; limit?: number; offset?: number } = {}
+    ) {
+      const d = doc();
+      const [limit, offset] = clampPage(params.limit, params.offset);
+      let all = Object.values(d.socialServiceRequests);
+      if (params.type) all = all.filter((r) => r.type === params.type);
+      if (params.status) all = all.filter((r) => r.status === params.status);
+      all.sort((a, b) => b.requestOpenedAt.localeCompare(a.requestOpenedAt));
+      const total = all.length;
+      const items = all.slice(offset, offset + limit).map((r) => {
+        const h = d.households[r.householdId];
+        return {
+          id: r.id,
+          type: r.type,
+          label: labelFor(r.type),
+          status: r.status,
+          request_opened_at: r.requestOpenedAt,
+          household_id: r.householdId,
+          household_name: h?.name ?? null,
+          household_phone: h?.phoneNumber ?? null,
+          mesh_status: r.meshStatus ?? null,
+          bin: r.bin ?? null,
+          address_accuracy: r.addressAccuracy ?? null,
+          internet_access: r.internetAccess ?? [],
+          notes: r.notes ?? null,
+        };
+      });
+      return { items, total, limit, offset };
     },
   };
 }

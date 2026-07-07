@@ -20,9 +20,13 @@ import { LANGUAGES } from "../src/domain/catalog.ts";
 import consoleStyles from "./console/styles.css?raw";
 import consoleApp from "./console/app.js?raw";
 import viewCheckin from "./console/views/checkin.js?raw";
+import viewAppointments from "./console/views/appointments.js?raw";
+import viewLookup from "./console/views/lookup.js?raw";
 import viewDashboard from "./console/views/dashboard.js?raw";
 import viewIntake from "./console/views/intake.js?raw";
 import viewOutreach from "./console/views/outreach.js?raw";
+import viewFurniture from "./console/views/furniture.js?raw";
+import viewServices from "./console/views/services.js?raw";
 import viewDistros from "./console/views/distros.js?raw";
 import viewAdmin from "./console/views/admin.js?raw";
 
@@ -140,10 +144,14 @@ function firstRunScreen(root: HTMLElement, peerId: string): Promise<AppConfig> {
 const CONSOLE_SCRIPTS: string[] = [
   consoleApp,
   viewCheckin,
-  viewDashboard,
+  viewAppointments,
+  viewLookup,
   viewIntake,
   viewOutreach,
+  viewFurniture,
+  viewServices,
   viewDistros,
+  viewDashboard,
 ];
 
 function runInlineScript(code: string): void {

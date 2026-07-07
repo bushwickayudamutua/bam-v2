@@ -66,6 +66,8 @@ export interface RequestRow {
   zipCode?: string;
   geocode?: string;
   address?: string;
+  bin?: string; // NYC Building Identification Number (furniture delivery)
+  addressAccuracy?: string; // Apartment/Building/No result/...
   createdAt: string;
   updatedAt: string;
 }
@@ -82,6 +84,9 @@ export interface SocialServiceRequestRow {
   cityState?: string;
   zipCode?: string;
   address?: string;
+  meshStatus?: string; // raw mesh install pipeline stage (type === mesh_internet)
+  bin?: string; // NYC Building Identification Number (Mesh)
+  addressAccuracy?: string;
   requestOpenedAt: string;
   statusLastUpdatedAt: string;
   processingDate?: string;
