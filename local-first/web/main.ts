@@ -11,7 +11,7 @@
 import { WebCryptoSigner } from "@automerge/automerge-subduction";
 import { IndexedDBStorageAdapter } from "@automerge/automerge-repo-storage-indexeddb";
 import { learnedRelayPeers, openStore, type BamStore } from "../src/store.ts";
-import { parseInviteUrl, type InvitePayload } from "../src/roster.ts";
+import { isAdmin, parseInviteUrl, type InvitePayload } from "../src/roster.ts";
 import { makeWebApi } from "../src/webapi.ts";
 import { registerRosterView } from "../src/roster-view.ts";
 import { LANGUAGES } from "../src/domain/catalog.ts";
@@ -144,7 +144,6 @@ const CONSOLE_SCRIPTS: string[] = [
   viewIntake,
   viewOutreach,
   viewDistros,
-  viewAdmin,
 ];
 
 function runInlineScript(code: string): void {
@@ -296,7 +295,23 @@ async function boot(): Promise<void> {
   w.BAM.LANGUAGES = [...LANGUAGES];
 
   for (const code of CONSOLE_SCRIPTS) runInlineScript(code);
+  // The Admin view (expire / publish website data / scrub PII) is only
+  // registered for roster admins. This is a guard against accidents, not a
+  // security boundary — in a local-first app every enrolled device holds the
+  // whole doc; real enforcement is the sync policy + eventual Keyhive
+  // per-doc capabilities.
+  const adminAtBoot = isAdmin(store.roster.doc(), store.peerId);
+  if (adminAtBoot) runInlineScript(viewAdmin);
   registerRosterView(store);
+
+  // If THIS device's role changes (promoted/demoted by an admin elsewhere),
+  // reload so the nav matches the new role. Roster changes are frequent
+  // (every join touches the doc) — only react when our own role flips.
+  store.roster.on("change", () => {
+    if (isAdmin(store.roster.doc(), store.peerId) !== adminAtBoot) {
+      location.reload();
+    }
+  });
 
   root.remove();
   (w.BAM as { start: () => void }).start();
