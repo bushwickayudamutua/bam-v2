@@ -14,7 +14,7 @@ def test_app_index_is_served(client) -> None:
     resp = client.get("/app/")
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
-    assert "BAM Operator Console" in resp.text
+    assert "Bushwick Ayuda Mutua" in resp.text
 
 
 def test_static_assets_are_served(client) -> None:
