@@ -209,14 +209,19 @@ async function boot(): Promise<void> {
   const signer = await WebCryptoSigner.setup();
   const peerId = signer.peerId().toString();
 
-  // Recovery hatch: `#reset` wipes this device's saved org config.
-  if (/[#&]reset\b/.test(location.hash)) {
+  // Read the hash BEFORE any stripping. An invite and a `#reset` can be
+  // present together (e.g. a "run fresh" link) — parse both first, then
+  // clean the URL once, so stripping never eats the invite.
+  const invitePayload = parseInviteUrl(location.hash);
+  const wantsReset = /[#&]reset\b/.test(location.hash);
+  if (wantsReset) {
     localStorage.removeItem(CONFIG_KEY);
+  }
+  if (invitePayload || wantsReset) {
+    // Drop the credential + flags from the address bar/history.
     history.replaceState(null, "", location.pathname + location.search);
   }
 
-  // QR onboarding: an invite link opened the app.
-  const invitePayload = parseInviteUrl(location.hash);
   let inviteRedemption: { inviteId: string; secret: string; deviceName: string } | undefined;
 
   let config = loadConfig();
@@ -232,8 +237,6 @@ async function boot(): Promise<void> {
       secret: invitePayload.secret,
       deviceName: joined.deviceName,
     };
-    // Drop the credential from the address bar/history once consumed.
-    history.replaceState(null, "", location.pathname + location.search);
   }
   if (!config) {
     config = await firstRunScreen(root, peerId);
