@@ -156,17 +156,22 @@ function runInlineScript(code: string): void {
 /** QR onboarding: `#invite=…` in the URL → one-field join screen. */
 async function inviteScreen(
   root: HTMLElement,
-  payload: InvitePayload
+  payload: InvitePayload,
+  hadExistingOrg = false
 ): Promise<{ config: AppConfig; deviceName: string }> {
   return new Promise((resolve) => {
     root.innerHTML = "";
     const card = document.createElement("div");
     card.className = "card stack";
     card.style.cssText = "max-width:480px;margin:48px auto";
+    const replaceNote = hadExistingOrg
+      ? `<div class="note">This device already belongs to another org — joining this invite switches it to <b>${payload.org ?? "the invited org"}</b> as a volunteer.</div>`
+      : "";
     card.innerHTML = `
       <h2 class="card__title">You're invited to ${payload.org ?? "a BAM org"} 🎉</h2>
-      <p class="muted" style="margin:0">Scanning this code enrolls this device as a <b>volunteer</b>.
+      <p class="muted" style="margin:0">This enrolls your device as a <b>volunteer</b>.
       Pick a name so the team knows whose device this is:</p>
+      ${replaceNote}
       <div class="field">
         <label class="label" for="invite-device-name">Your name</label>
         <input class="input" id="invite-device-name" placeholder="e.g. Rosa — personal phone" autocomplete="off">
@@ -204,13 +209,23 @@ async function boot(): Promise<void> {
   const signer = await WebCryptoSigner.setup();
   const peerId = signer.peerId().toString();
 
-  // QR onboarding: a fresh device opened an invite link.
+  // Recovery hatch: `#reset` wipes this device's saved org config.
+  if (/[#&]reset\b/.test(location.hash)) {
+    localStorage.removeItem(CONFIG_KEY);
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+
+  // QR onboarding: an invite link opened the app.
   const invitePayload = parseInviteUrl(location.hash);
   let inviteRedemption: { inviteId: string; secret: string; deviceName: string } | undefined;
 
   let config = loadConfig();
-  if (!config && invitePayload) {
-    const joined = await inviteScreen(root, invitePayload);
+  // An invite link takes PRECEDENCE over a previously-saved org — otherwise
+  // a returning visitor who once created their own org would silently land
+  // back in it (as its admin) and the invite would be ignored. Skip only if
+  // this device is already configured for the *same* org the invite targets.
+  if (invitePayload && (!config || config.rosterUrl !== invitePayload.rosterUrl)) {
+    const joined = await inviteScreen(root, invitePayload, !!config);
     config = joined.config;
     inviteRedemption = {
       inviteId: invitePayload.inviteId,
