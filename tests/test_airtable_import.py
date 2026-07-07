@@ -171,6 +171,53 @@ def test_request_import_normalizes_types_and_derives_dates(session: Session) -> 
     assert any("Weird Status" in s for s in report.unknown_statuses)
 
 
+def test_furniture_requests_table_imports_into_requests(session: Session) -> None:
+    """The migration script (bam-automation zakieh/automations) splits bed +
+    furniture into a separate "Furniture Requests" table. Those rows are goods
+    requests and must land in the Request model, with Geocode preserved."""
+    source = FakeSource(
+        base_tables(
+            Households=[rec("recH1", **{"Phone Number": "+17185550102"})],
+            Requests=[
+                rec("recR1", **{
+                    "Household": ["recH1"],
+                    "Type": "Jabón & Productos de baño / Soap & Shower Products / 肥皂和淋浴用品",
+                    "Status": "Open",
+                }),
+            ],
+            **{"Furniture Requests": [
+                rec("recF1", **{
+                    "Household": ["recH1"],
+                    "Type": "Sofa / Sofa / 沙發",
+                    "Status": "Open",
+                    "Legacy Date Submitted": "2024-03-05",
+                    "Geocode": "87G8P2XR+00",
+                }),
+                rec("recF2", **{
+                    "Household": ["recH1"],
+                    "Type": "Colchón individual / Twin Mattress / 單人床墊",
+                    "Status": "Open",
+                }),
+                rec("recF3", **{
+                    "Household": ["recH1"],
+                    "Type": "Cuna / Crib / 嬰兒床",
+                    "Status": "Open",
+                }),
+            ]},
+        )
+    )
+
+    report = import_base(session, source, now=FIXED_NOW)
+
+    assert report.tables_found.get("furniture_requests") == "Furniture Requests"
+    by_type = {r.type: r for r in session.exec(select(Request)).all()}
+    # soap (Requests) + sofa/twin_mattress/crib (Furniture Requests) all present
+    assert set(by_type) == {"soap", "sofa", "twin_mattress", "crib"}
+    assert report.requests.created == 4
+    assert by_type["sofa"].geocode == "87G8P2XR+00"  # geocode carried over
+    assert by_type["sofa"].request_opened_at.date() == date(2024, 3, 5)
+
+
 def test_orphaned_request_skipped_and_reported(session: Session) -> None:
     source = FakeSource(
         base_tables(

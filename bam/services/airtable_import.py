@@ -60,6 +60,13 @@ class RecordSource(Protocol):
 TABLE_ALIASES: dict[str, tuple[str, ...]] = {
     "households": ("households",),
     "requests": ("requests",),
+    # The migration script splits bed + furniture into their own "Furniture
+    # Requests" table (bam-automation zakieh/automations). Its rows are goods
+    # requests like any other — furniture/bed types resolve to canonical keys
+    # via normalize_type — so they import into the same Request model as
+    # "requests". A separate role (not another alias on "requests") is
+    # required: find_tables keeps only one table per role.
+    "furniture_requests": ("furniture requests",),
     "social_service_requests": ("social service requests", "social services"),
     "mesh_requests": ("mesh requests",),
     "distros": ("distros", "distributions"),
@@ -161,6 +168,12 @@ def import_base(
     if "requests" in tables:
         _import_requests(
             session, source, tables["requests"], Request, report.requests,
+            household_map, report, now,
+        )
+    if "furniture_requests" in tables:
+        # Same Request model + handling as "requests" (incl. Geocode).
+        _import_requests(
+            session, source, tables["furniture_requests"], Request, report.requests,
             household_map, report, now,
         )
     if "social_service_requests" in tables:
