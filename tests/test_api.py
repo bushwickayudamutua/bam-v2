@@ -268,6 +268,8 @@ def test_jobs_website_data_writes_tmp_path(
 
 
 def test_jobs_scrub_pii(client, session, make_household, make_request):
+    from bam.models import local_date
+
     now = datetime.now(timezone.utc)
     old = make_household(session, updated_at=now - timedelta(days=40), notes="call after 5")
     make_request(
@@ -275,7 +277,11 @@ def test_jobs_scrub_pii(client, session, make_household, make_request):
         old,
         type="soap",
         status=RequestStatus.TIMEOUT,
-        processing_date=now.date() - timedelta(days=1),
+        # Derive from the BUSINESS date (America/New_York), not the UTC
+        # date: between 8pm and midnight ET the UTC date is a day ahead, and
+        # the scrub's strict `processing_date < local_date(now)` would see
+        # "today" instead of "yesterday" and skip the row (real CI flake).
+        processing_date=local_date(now) - timedelta(days=2),
         street_address="123 Main St",
     )
     submission = FormSubmission(
