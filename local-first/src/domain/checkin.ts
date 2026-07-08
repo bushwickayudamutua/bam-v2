@@ -147,6 +147,59 @@ export function fulfill(
   ];
 }
 
+/**
+ * Time out requests a present recipient DECLINES at check-in (volunteer guide
+ * Step 4: "do you still need this?" → NO). Same primitive as fulfill but the
+ * status is Timeout, it does NOT feed the Fulfilled Request Count (a timed-out
+ * item is closed-but-unfulfilled), and it only transitions OPEN rows (an
+ * already-Delivered or already-Timeout id is left untouched). Distinct from
+ * the end-of-distro no-show timeout. Returns the resolved rows, goods first.
+ */
+export function timeout(
+  handle: DocHandle<BamDoc>,
+  ids: { requestIds?: string[]; socialServiceRequestIds?: string[] },
+  now: string = nowIso()
+): (RequestRow | SocialServiceRequestRow)[] {
+  const doc = handle.doc();
+  const requestIds = [...new Set(ids.requestIds ?? [])];
+  const socialIds = [...new Set(ids.socialServiceRequestIds ?? [])];
+  const missing: string[] = [];
+  for (const id of requestIds) {
+    if (!doc.requests[id]) missing.push(`request ${id}`);
+  }
+  for (const id of socialIds) {
+    if (!doc.socialServiceRequests[id]) missing.push(`social service request ${id}`);
+  }
+  if (missing.length) throw new Error(`Unknown ids: ${missing.join(", ")}`);
+
+  handle.change((d) => {
+    const timeoutRow = (row: RequestRow | SocialServiceRequestRow): void => {
+      if (row.status !== "Open") return;
+      applyStatusChange(row, "Timeout", now);
+    };
+    for (const id of requestIds) timeoutRow(d.requests[id]!);
+    for (const id of socialIds) timeoutRow(d.socialServiceRequests[id]!);
+  });
+
+  const after = handle.doc();
+  return [
+    ...requestIds.map((id) => after.requests[id]!),
+    ...socialIds.map((id) => after.socialServiceRequests[id]!),
+  ];
+}
+
+/** Find households by the last digits of their phone (guide Step 2: "type the
+ * last 4 digits"). A triage aid returning a candidate list; non-digits are
+ * stripped. Phones are stored E.164, so we match the trailing digits. */
+export function searchByPhoneSuffix(doc: BamDoc, digits: string, limit = 20): Household[] {
+  const suffix = (digits.match(/\d/g) ?? []).join("");
+  if (!suffix) return [];
+  return Object.values(doc.households)
+    .filter((h) => h.phoneNumber !== undefined && h.phoneNumber.endsWith(suffix))
+    .sort((a, b) => cmp(a.name ?? "", b.name ?? "") || cmp(a.id, b.id))
+    .slice(0, limit);
+}
+
 export interface NoShowReport {
   missedHouseholdIds: string[];
   timedOutHouseholdIds: string[];

@@ -34,6 +34,8 @@ import {
   lookupByPhone,
   processNoShows,
   searchByName,
+  searchByPhoneSuffix,
+  timeout as timeoutRequestsDomain,
 } from "./domain/checkin.ts";
 import {
   buildOutreachList,
@@ -178,6 +180,14 @@ export function makeWebApi(store: BamStore) {
         languages: h.languages,
       }));
     },
+    async searchByPhone(digits: string) {
+      return searchByPhoneSuffix(doc(), digits).map((h) => ({
+        id: h.id,
+        name: h.name ?? null,
+        phone_number: h.phoneNumber ?? null,
+        languages: h.languages,
+      }));
+    },
     async householdView(id: string) {
       const h = doc().households[id];
       if (!h) throw new ApiError(404, `Unknown household id ${id}`);
@@ -191,6 +201,20 @@ export function makeWebApi(store: BamStore) {
       const socialIds = body.social_service_request_ids ?? [];
       wrap(() =>
         fulfill(store.base, { requestIds, socialServiceRequestIds: socialIds })
+      );
+      const after = doc();
+      return {
+        requests: requestIds.map((id) => requestOut(after.requests[id]!)),
+        social_service_requests: socialIds.map((id) =>
+          requestOut(after.socialServiceRequests[id]!)
+        ),
+      };
+    },
+    async timeout(body: { request_ids?: string[]; social_service_request_ids?: string[] } = {}) {
+      const requestIds = body.request_ids ?? [];
+      const socialIds = body.social_service_request_ids ?? [];
+      wrap(() =>
+        timeoutRequestsDomain(store.base, { requestIds, socialServiceRequestIds: socialIds })
       );
       const after = doc();
       return {
@@ -251,12 +275,20 @@ export function makeWebApi(store: BamStore) {
         last_texted: c.lastTexted ?? null,
       }));
     },
-    async blast(body: { household_ids?: string[]; template?: string; max_messages?: number } = {}) {
+    async blast(
+      body: {
+        household_ids?: string[];
+        template?: string;
+        templates?: { [lang: string]: string };
+        max_messages?: number;
+      } = {}
+    ) {
       const report = queueBlast(
         store.base,
         {
           householdIds: body.household_ids ?? [],
           template: body.template ?? "",
+          templates: body.templates,
           maxMessages: body.max_messages ?? undefined,
         },
         nowIso(),

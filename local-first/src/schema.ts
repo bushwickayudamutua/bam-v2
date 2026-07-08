@@ -207,10 +207,25 @@ export interface RosterDoc {
   baseDocUrl?: string;
 }
 
+/** Automerge rejects explicit `undefined`; drop such keys (recursively) so an
+ * org config with empty optional fields (e.g. no short name) can be written. */
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(stripUndefined) as unknown as T;
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (v === undefined) continue;
+      out[k] = stripUndefined(v);
+    }
+    return out as T;
+  }
+  return value;
+}
+
 export function emptyBamDoc(org: string, now: string, config?: OrgConfig): BamDoc {
   return {
     meta: { org, schemaVersion: 1, createdAt: now },
-    config: config ?? { name: org },
+    config: stripUndefined(config ?? { name: org }),
     households: {},
     requests: {},
     socialServiceRequests: {},
