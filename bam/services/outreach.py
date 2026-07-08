@@ -11,6 +11,7 @@ from __future__ import annotations
 import secrets
 import time
 from datetime import date, datetime, timedelta, timezone
+from collections.abc import Mapping
 from typing import Callable, Sequence
 
 from sqlmodel import Session, col, or_, select
@@ -28,7 +29,12 @@ from bam.models import (
 )
 from bam.request_types import normalize_type
 from bam.schemas import BlastMessage, BlastReport, OutreachCandidate
-from bam.sms.base import SMSProvider, render_template
+from bam.sms.base import (
+    SMSProvider,
+    render_template,
+    resolve_send_language,
+    select_template,
+)
 
 #: Outcome key -> short tag appended to household notes (spec 6.4 rows A4-A6).
 OUTCOME_TAGS: dict[str, str] = {
@@ -135,6 +141,7 @@ def send_text_blast(
     now: datetime | None = None,
     dry_run: bool = False,
     token_factory: Callable[[], str] | None = None,
+    templates: Mapping[str, str] | None = None,
 ) -> BlastReport:
     """Send a templated text blast to households (spec 6.2 sequence diagram).
 
@@ -192,8 +199,16 @@ def send_text_blast(
         if settings.randomize_request_url:
             joiner = "&" if "?" in request_url else "?"
             request_url = f"{request_url}{joiner}r={make_token()}"
+        # Per-language routing when a template map is supplied; otherwise the
+        # single scalar template goes to everyone (spec 6.2 back-compat).
+        send_language: str | None = None
+        if templates:
+            send_language = resolve_send_language(household.languages or [])
+            raw_body = select_template(templates, household.languages or [])
+        else:
+            raw_body = template
         body = render_template(
-            template,
+            raw_body,
             first_name=name_tokens[0] if name_tokens else "",
             request_url=request_url,
         )
@@ -206,6 +221,7 @@ def send_text_blast(
                 body=body,
                 ok=result.ok,
                 error=result.error,
+                send_language=send_language,
             )
         )
         if result.ok:

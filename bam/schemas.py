@@ -223,6 +223,7 @@ class BlastMessage(BaseModel):
     body: str
     ok: bool
     error: str | None = None
+    send_language: str | None = None  # which language bucket routing chose
 
 
 class BlastReport(BaseModel):

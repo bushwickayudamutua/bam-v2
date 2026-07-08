@@ -6,7 +6,7 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from sqlmodel import Session
 
 from bam.api.routes import value_error_to_http
@@ -30,8 +30,18 @@ class OutreachListIn(BaseModel):
 
 class BlastIn(BaseModel):
     household_ids: list[int]
-    template: str
+    # A single template goes to everyone; a per-language map (keys
+    # Spanish/Cantonese/English) routes each household to its language, with
+    # a Spanish+Cantonese+English "All" fallback. At least one is required.
+    template: str | None = None
+    templates: dict[str, str] | None = None
     max_messages: int | None = None
+
+    @model_validator(mode="after")
+    def _require_a_template(self) -> "BlastIn":
+        if not self.template and not self.templates:
+            raise ValueError("Provide 'template' or 'templates'.")
+        return self
 
 
 class AppointmentIn(BaseModel):
@@ -68,9 +78,10 @@ def outreach_blast(
     return outreach.send_text_blast(
         session,
         payload.household_ids,
-        payload.template,
+        payload.template or "",
         provider,
         max_messages=payload.max_messages,
+        templates=payload.templates,
     )
 
 

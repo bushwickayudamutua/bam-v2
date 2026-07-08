@@ -1,19 +1,20 @@
-"""Address geocoding (parity with the /clean-record address pipeline).
+"""Address geocoding (parity with bam-automation's ``format_address`` in
+``core/bam_core/utils/geo.py``).
 
-Production's ``clean-record`` automation resolves an address to a cleaned
-address, an accuracy grade, an NYC Building Identification Number (BIN), and
-an Open Location Code (plus_code) via Google Maps + NYC Planning Labs. This
-mirrors that as a pluggable ``Geocoder``:
+Resolves an address to a cleaned address, an accuracy grade, an NYC Building
+Identification Number (BIN), and a privacy-truncated Open Location Code
+(plus_code), via a three-call Google chain + NYC Planning Labs GeoSearch:
 
-- ``GoogleNycGeocoder`` — the real pipeline; active when a Google Maps key
-  is configured. Google geocodes the address (accuracy from the result's
-  ``location_type`` and component granularity, plus_code from the response),
-  and NYC Planning Labs' GeoSearch supplies the BIN.
+- ``GoogleNycGeocoder`` — the real pipeline (active when a Google Maps key is
+  configured): Google Places Autocomplete (accuracy + candidate address) →
+  Google Address Validation (cleaned address, fallback accuracy) → Google
+  Geocoding (lat/lng, encoded to an 8-char plus code via ``bam.services.olc``)
+  → NYC Planning Labs GeoSearch (BIN).
 - ``NoopGeocoder`` — a safe passthrough that just formats the address; used
   when no key is set (tests, local dev), so intake still works.
 
-The SMS layer's ``get_provider`` pattern is followed: ``get_geocoder``
-returns the right one from settings.
+Every HTTP call is swallowed on error — geocoding must never break intake.
+``get_geocoder`` follows the SMS ``get_provider`` gating pattern.
 """
 
 from __future__ import annotations
@@ -22,17 +23,38 @@ import json
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Callable, Protocol
 
 from bam.config import Settings
+from bam.services import olc
+
+PLACES_URL = "https://maps.googleapis.com/maps/api/place/autocomplete/json"
+VALIDATION_URL = "https://addressvalidation.googleapis.com/v1:validateAddress"
+GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
+GEOSEARCH_URL = "https://geosearch.planninglabs.nyc/v2/search"
+
+DEFAULT_CITY_STATE = "Brooklyn, NY"
+COMMON_ZIPCODE_MISTAKES = {"112007": "11207"}
+DEFAULT_BIN_RESPONSES = ["3000000", "1000000"]  # NYC placeholder BINs to discard
+# Google Places is bounded to a 10-mile radius around "Mayday" (the org's hub).
+MAYDAY_LOCATION = "40.7041015,-73.9163523"
+MAYDAY_RADIUS = 16093.44  # 10 miles in meters
+
+_ADDRESS_SUBS = (
+    (" PISO", " FLOOR"),
+    (" APARTAMENTO", " APT"),
+    (" APTO", " APT"),
+    (" APRT", " APT"),
+    (" DE ", " "),
+)
 
 
 @dataclass
 class GeocodeResult:
     cleaned_address: str | None
-    address_accuracy: str  # Apartment / Building / Address Outside NY / No result
+    address_accuracy: str  # Apartment / Building / No result
     bin: str | None  # NYC Building Identification Number
-    plus_code: str | None  # Open Location Code
+    plus_code: str | None  # Open Location Code (8-char, privacy-truncated)
 
 
 class Geocoder(Protocol):
@@ -43,6 +65,18 @@ class Geocoder(Protocol):
 
 def _joined(street: str | None, city_state: str | None, zip_code: str | None) -> str:
     return " ".join(p for p in (street, city_state, zip_code) if p).strip()
+
+
+def _fix_address(address: str) -> str:
+    fixed = (address or "").upper().strip()
+    for old, new in _ADDRESS_SUBS:
+        fixed = fixed.replace(old, new)
+    return fixed.rstrip("#").strip()
+
+
+def _fix_zip_code(zip_code: str | None) -> str:
+    z = (zip_code or "").strip()
+    return COMMON_ZIPCODE_MISTAKES.get(z, z)
 
 
 class NoopGeocoder:
@@ -59,78 +93,123 @@ class NoopGeocoder:
 
 
 class GoogleNycGeocoder:
-    """Real geocoder: Google Maps for the cleaned address + accuracy +
-    plus_code, NYC Planning Labs GeoSearch for the BIN."""
+    """The real chain. ``fetch`` (url, method, body) → parsed JSON is
+    injectable so tests run without the network; it defaults to urllib."""
 
-    GOOGLE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
-    GEOSEARCH_URL = "https://geosearch.planninglabs.nyc/v2/search"
-
-    def __init__(self, api_key: str, opener=urllib.request.urlopen) -> None:
+    def __init__(self, api_key: str, fetch: Callable[..., dict] | None = None) -> None:
         if not api_key:
             raise ValueError("GoogleNycGeocoder needs a Google Maps API key")
         self._api_key = api_key
-        self._opener = opener
+        self._fetch = fetch or self._default_fetch
 
-    def _get_json(self, url: str) -> dict:
-        with self._opener(url, timeout=10) as resp:  # noqa: S310 (trusted URLs)
+    def _default_fetch(self, url: str, *, method: str = "GET", body: dict | None = None) -> dict:
+        data = json.dumps(body).encode("utf-8") if body is not None else None
+        headers = {"Content-Type": "application/json"} if body is not None else {}
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
+        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310 (trusted URLs)
             return json.loads(resp.read().decode("utf-8"))
 
-    def geocode(self, street_address, city_state, zip_code) -> GeocodeResult:
-        joined = _joined(street_address, city_state, zip_code)
-        if not joined:
-            return GeocodeResult(None, "No result", None, None)
-        try:
-            params = urllib.parse.urlencode({"address": joined, "key": self._api_key})
-            data = self._get_json(f"{self.GOOGLE_URL}?{params}")
-        except Exception:  # noqa: BLE001 — geocoding must never break intake
-            return GeocodeResult(joined, "No result", None, None)
+    def _build_query(self, street, city_state, zip_code) -> str:
+        return (
+            f"{_fix_address(street)}, {city_state or DEFAULT_CITY_STATE} "
+            f"{_fix_zip_code(zip_code)}"
+        ).strip().upper()
 
-        results = data.get("results") or []
-        if not results:
-            return GeocodeResult(joined, "No result", None, None)
-        top = results[0]
-        cleaned = top.get("formatted_address") or joined
-        plus_code = (data.get("plus_code") or top.get("plus_code") or {}).get(
-            "global_code"
-        )
-        accuracy = self._accuracy(top)
-        bin_number = self._nyc_bin(joined) if accuracy != "Address Outside NY" else None
+    def geocode(self, street_address, city_state, zip_code) -> GeocodeResult:
+        if not (street_address and street_address.strip()):
+            return GeocodeResult(_joined(street_address, city_state, zip_code) or None, "No result", None, None)
+
+        query = self._build_query(street_address, city_state, zip_code)
+        accuracy = "No result"
+        description = query
+
+        # 1. Places Autocomplete → candidate description + accuracy from types.
+        try:
+            params = urllib.parse.urlencode(
+                {
+                    "input": query,
+                    "key": self._api_key,
+                    "location": MAYDAY_LOCATION,
+                    "radius": MAYDAY_RADIUS,
+                    "strictbounds": "true",
+                    "language": "en-US",
+                }
+            )
+            preds = self._fetch(f"{PLACES_URL}?{params}").get("predictions") or []
+        except Exception:  # noqa: BLE001 — geocoding must never break intake
+            preds = []
+        if preds:
+            description = preds[0].get("description") or query
+            types = preds[0].get("types") or []
+            if "subpremise" in types:
+                accuracy = "Apartment"
+            elif "premise" in types:
+                accuracy = "Building"
+
+        # 2. Address Validation → cleaned address (+ fallback accuracy).
+        cleaned: str | None = None
+        verdict: dict = {}
+        try:
+            vresp = self._fetch(
+                f"{VALIDATION_URL}?key={self._api_key}",
+                method="POST",
+                body={"address": {"addressLines": [description]}},
+            )
+            result = vresp.get("result") or {}
+            verdict = result.get("verdict") or {}
+            std = (result.get("uspsData") or {}).get("standardizedAddress") or {}
+            if std.get("firstAddressLine"):
+                cleaned = (
+                    f"{std.get('firstAddressLine', '')} {std.get('cityStateZipAddressLine', '')}"
+                ).strip().upper()
+            elif (result.get("address") or {}).get("formattedAddress"):
+                cleaned = result["address"]["formattedAddress"].upper()
+        except Exception:  # noqa: BLE001
+            pass
+        if cleaned is None:
+            cleaned = description.upper()
+        cleaned = cleaned.replace(" # ", " APT ")
+
+        if accuracy == "No result" and verdict:
+            vg = verdict.get("validationGranularity", "")
+            ig = verdict.get("inputGranularity", "")
+            if vg == "SUB_PREMISE":
+                accuracy = "Apartment"
+            elif vg == "PREMISE" or ig.endswith("PREMISE"):
+                accuracy = "Building"
+
+        # BIN + plus_code only when we actually resolved a place.
+        plus_code: str | None = None
+        bin_number: str | None = None
+        if accuracy != "No result":
+            plus_code = self._plus_code(cleaned)
+            bin_number = self._nyc_bin(cleaned)
         return GeocodeResult(cleaned, accuracy, bin_number, plus_code)
 
-    @staticmethod
-    def _accuracy(result: dict) -> str:
-        types = result.get("types") or []
-        components = result.get("address_components") or []
-        state = next(
-            (
-                c
-                for c in components
-                if "administrative_area_level_1" in (c.get("types") or [])
-            ),
-            None,
-        )
-        if state and state.get("short_name") != "NY":
-            return "Address Outside NY"
-        if "subpremise" in types:
-            return "Apartment"
-        location_type = (result.get("geometry") or {}).get("location_type")
-        if location_type == "ROOFTOP" or "premise" in types or "street_address" in types:
-            return "Building"
-        return "No result"
+    def _plus_code(self, cleaned: str) -> str | None:
+        try:
+            params = urllib.parse.urlencode({"address": cleaned, "key": self._api_key})
+            results = self._fetch(f"{GEOCODE_URL}?{params}").get("results") or []
+        except Exception:  # noqa: BLE001
+            return None
+        if not results:
+            return None
+        loc = ((results[0].get("geometry") or {}).get("location")) or {}
+        return olc.encode(loc.get("lat"), loc.get("lng"))
 
     def _nyc_bin(self, address: str) -> str | None:
         try:
             params = urllib.parse.urlencode({"text": address, "size": 1})
-            data = self._get_json(f"{self.GEOSEARCH_URL}?{params}")
+            features = self._fetch(f"{GEOSEARCH_URL}?{params}").get("features") or []
         except Exception:  # noqa: BLE001
             return None
-        features = data.get("features") or []
         if not features:
             return None
-        addendum = (features[0].get("properties") or {}).get("addendum") or {}
-        pad = addendum.get("pad") or {}
+        pad = ((features[0].get("properties") or {}).get("addendum") or {}).get("pad") or {}
         bin_number = pad.get("bin")
-        return str(bin_number) if bin_number else None
+        if bin_number is None or str(bin_number) in DEFAULT_BIN_RESPONSES:
+            return None
+        return str(bin_number)
 
 
 def get_geocoder(settings: Settings) -> Geocoder:
