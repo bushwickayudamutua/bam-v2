@@ -115,12 +115,35 @@ export interface OutboxMessage {
   error?: string;
 }
 
+/**
+ * White-label instance config, stored IN the CRDT doc so it syncs to every
+ * device (no server, no rebuild). The founding admin sets it at org creation;
+ * the console themes itself from it. Mirrors the server's InstanceConfig shape.
+ */
+export interface OrgConfig {
+  name: string;
+  shortName?: string;
+  tagline?: string;
+  timezone?: string;
+  branding?: {
+    primaryColor?: string;
+    accentColor?: string;
+    themeColor?: string;
+    title?: string;
+    logo?: string; // "hands" | "initials" | "none" | raw inline <svg>
+  };
+  /** Per-view feature toggles, e.g. { furniture: false }. Missing = enabled. */
+  features?: { [view: string]: boolean };
+}
+
 export interface BamDoc {
   meta: {
     org: string;
     schemaVersion: number;
     createdAt: string;
   };
+  /** Instance identity/branding/features (white-label). */
+  config?: OrgConfig;
   households: { [id: string]: Household };
   requests: { [id: string]: RequestRow };
   socialServiceRequests: { [id: string]: SocialServiceRequestRow };
@@ -184,9 +207,10 @@ export interface RosterDoc {
   baseDocUrl?: string;
 }
 
-export function emptyBamDoc(org: string, now: string): BamDoc {
+export function emptyBamDoc(org: string, now: string, config?: OrgConfig): BamDoc {
   return {
     meta: { org, schemaVersion: 1, createdAt: now },
+    config: config ?? { name: org },
     households: {},
     requests: {},
     socialServiceRequests: {},

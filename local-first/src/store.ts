@@ -20,7 +20,7 @@
 import { Repo, initSubduction } from "@automerge/automerge-repo";
 import type { DocHandle, StorageAdapterInterface } from "@automerge/automerge-repo";
 import { emptyBamDoc, emptyRosterDoc, nowIso } from "./schema.ts";
-import type { BamDoc, RosterDoc } from "./schema.ts";
+import type { BamDoc, OrgConfig, RosterDoc } from "./schema.ts";
 import { addMember, isActiveMember, redeemInvite, rosterPolicy } from "./roster.ts";
 
 /** Matches the Signer interface of @automerge/automerge-subduction. */
@@ -41,6 +41,8 @@ export interface OpenStoreOptions {
   rosterUrl?: string;
   /** Create a new org with this name (mutually exclusive with rosterUrl). */
   createOrg?: string;
+  /** White-label config to bake into the new org's doc (branding, features). */
+  orgConfig?: Partial<OrgConfig>;
   /** Display name for this device when bootstrapping a new org. */
   deviceName?: string;
   /** Extra peer ids the policy always allows (e.g. a relay's key). */
@@ -125,7 +127,8 @@ export async function openStore(opts: OpenStoreOptions): Promise<BamStore> {
     const org = opts.createOrg ?? "BAM";
     roster = repo.create<RosterDoc>(emptyRosterDoc(org, now));
     box.roster = roster;
-    base = repo.create<BamDoc>(emptyBamDoc(org, now));
+    const orgConfig: OrgConfig = { name: org, ...(opts.orgConfig ?? {}) };
+    base = repo.create<BamDoc>(emptyBamDoc(org, now, orgConfig));
     roster.change((d) => {
       d.baseDocUrl = base.url;
     });

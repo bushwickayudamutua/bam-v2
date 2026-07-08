@@ -43,6 +43,14 @@ interface AppConfig {
   rosterUrl?: string;
   endpoint?: string;
   relayPeer?: string;
+  /** This device's display name on the roster (the founding admin, at create). */
+  deviceName?: string;
+  /** White-label config captured at org creation, baked into the CRDT doc. */
+  orgConfig?: {
+    name: string;
+    shortName?: string;
+    branding?: { primaryColor?: string; themeColor?: string; title?: string; logo?: string };
+  };
 }
 
 const CONFIG_KEY = "bam-local-first-config";
@@ -82,7 +90,17 @@ function firstRunScreen(root: HTMLElement, peerId: string): Promise<AppConfig> {
     const idBox = el("div", { class: "mono", style: "word-break:break-all;font-size:13px" }, peerId);
     wrap.append(idNote, idBox);
 
-    const orgName = el("input", { class: "input", placeholder: "Org name (e.g. BAM)" });
+    const orgName = el("input", { class: "input", placeholder: "Org name (e.g. Anytown Mutual Aid)" });
+    const shortName = el("input", { class: "input", placeholder: "Short name / initials (e.g. AMA)" });
+    const brandColor = el("input", { class: "input", type: "color", value: "#ff6e2e" }) as HTMLInputElement;
+    const logoSelect = el("select", { class: "input" }) as HTMLSelectElement;
+    for (const [val, label] of [["initials", "Initials chip"], ["hands", "Clasped hands"], ["none", "No logo"]]) {
+      const opt = document.createElement("option");
+      opt.value = val;
+      opt.textContent = label;
+      logoSelect.append(opt);
+    }
+    const deviceName = el("input", { class: "input", placeholder: "Your device name (e.g. Rosa — laptop)" });
     const createEndpoint = el("input", {
       class: "input",
       placeholder: "wss://relay… (optional — needed to sync/invite other devices)",
@@ -95,11 +113,23 @@ function firstRunScreen(root: HTMLElement, peerId: string): Promise<AppConfig> {
     const joinBtn = el("button", { class: "btn btn-block" }, "Join an existing org");
 
     createBtn.onclick = () => {
+      const name = orgName.value.trim() || "My Mutual Aid";
       resolve({
         mode: "create",
-        orgName: orgName.value.trim() || "BAM",
+        orgName: name,
+        deviceName: deviceName.value.trim() || undefined,
         // TOFU applies when an endpoint is set with no pinned relay key.
         endpoint: createEndpoint.value.trim() || undefined,
+        orgConfig: {
+          name,
+          shortName: shortName.value.trim() || undefined,
+          branding: {
+            primaryColor: brandColor.value,
+            themeColor: brandColor.value,
+            title: name,
+            logo: logoSelect.value,
+          },
+        },
       });
     };
     joinBtn.onclick = () => {
@@ -120,9 +150,19 @@ function firstRunScreen(root: HTMLElement, peerId: string): Promise<AppConfig> {
       alertBox.textContent = msg;
     }
 
+    const brandRow = el("div", { class: "row" });
+    brandRow.append(
+      el("label", { class: "list-item__meta" }, "Brand color"),
+      brandColor,
+      el("label", { class: "list-item__meta" }, "Logo"),
+      logoSelect
+    );
     wrap.append(
-      el("h3", { class: "card__title", style: "font-size:14px;margin-top:12px" }, "Create"),
+      el("h3", { class: "card__title", style: "font-size:14px;margin-top:12px" }, "Create your org"),
       orgName,
+      shortName,
+      brandRow,
+      deviceName,
       createEndpoint,
       createBtn,
       el("h3", { class: "card__title", style: "font-size:14px;margin-top:12px" }, "Join"),
@@ -265,7 +305,11 @@ async function boot(): Promise<void> {
       trustDialedRelays: tofu,
       ...(config.mode === "join"
         ? { rosterUrl: config.rosterUrl }
-        : { createOrg: config.orgName ?? "BAM", deviceName: "founding browser device" }),
+        : {
+            createOrg: config.orgName ?? "My Mutual Aid",
+            deviceName: config.deviceName || "founding device",
+            orgConfig: config.orgConfig,
+          }),
     });
   } catch (err) {
     localStorage.removeItem(CONFIG_KEY);

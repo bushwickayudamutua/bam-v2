@@ -228,8 +228,12 @@
     if (!main) return;
     let { name, params } = parseHash();
     let view = views.get(name);
+    if (view && !isEnabled(view.name)) view = null; // feature-disabled
     if (!view) {
-      view = views.get(DEFAULT_VIEW) || BAM.getViews()[0];
+      view =
+        (isEnabled(DEFAULT_VIEW) && views.get(DEFAULT_VIEW)) ||
+        enabledViews()[0] ||
+        BAM.getViews()[0];
       name = view ? view.name : "";
     }
     setActiveNav(name);
@@ -259,11 +263,103 @@
     }
   }
 
+  /* White-label config -------------------------------------------------- */
+
+  // The resolved instance config (GET /config) and its feature map. Views
+  // whose feature flag is false are hidden from the nav.
+  BAM.config = null;
+  BAM.features = null;
+
+  function hexToRgb(hex) {
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || "");
+    return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
+  }
+  // Mix a hex color toward white by `ratio` (0..1) — used for the soft tints.
+  function towardWhite(hex, ratio) {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return hex;
+    const [r, g, b] = rgb.map((c) => Math.round(c + (255 - c) * ratio));
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+
+  function applyLogo(logo, shortName) {
+    const el = document.querySelector(".app-bar__logo");
+    if (!el || !logo || logo === "hands") return; // keep the default mark
+    if (logo === "none") {
+      el.innerHTML = "";
+      el.style.display = "none";
+      return;
+    }
+    if (logo === "initials") {
+      el.innerHTML = "";
+      el.textContent = (shortName || "•").slice(0, 3).toUpperCase();
+      el.style.fontWeight = "800";
+      el.style.color = "var(--brand)";
+      el.style.fontSize = "13px";
+      return;
+    }
+    el.innerHTML = logo; // trusted inline SVG supplied by the instance config
+  }
+
+  /** Theme the console from an instance config (GET /config). */
+  BAM.applyConfig = function applyConfig(config) {
+    BAM.config = config || {};
+    const branding = BAM.config.branding || {};
+    const org = BAM.config.org || {};
+    BAM.features = BAM.config.features || null;
+
+    const root = document.documentElement;
+    if (branding.primary_color) {
+      root.style.setProperty("--brand", branding.primary_color);
+      root.style.setProperty("--brand-soft", towardWhite(branding.primary_color, 0.86));
+      const rgb = hexToRgb(branding.primary_color);
+      if (rgb) root.style.setProperty("--focus", `0 0 0 3px rgba(${rgb.join(",")}, 0.35)`);
+    }
+    if (branding.accent_color) {
+      root.style.setProperty("--accent", branding.accent_color);
+      root.style.setProperty("--accent-soft", towardWhite(branding.accent_color, 0.7));
+    }
+    if (branding.theme_color) {
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute("content", branding.theme_color);
+    }
+    const title = branding.title || org.name;
+    if (title) {
+      document.title = title;
+      const barTitle = document.querySelector(".app-bar__title");
+      if (barTitle) barTitle.textContent = title;
+    }
+    applyLogo(branding.logo, org.short_name);
+    const langs = BAM.config.catalog && BAM.config.catalog.languages;
+    if (Array.isArray(langs) && langs.length) BAM.LANGUAGES = langs.slice();
+  };
+
+  function isEnabled(name) {
+    return !BAM.features || BAM.features[name] !== false;
+  }
+
+  function enabledViews() {
+    return BAM.getViews().filter((v) => isEnabled(v.name));
+  }
+
+  async function loadConfig() {
+    try {
+      if (window.BAM.api && typeof window.BAM.api.config === "function") {
+        return await window.BAM.api.config();
+      }
+      const res = await fetch("/config", { headers: { Accept: "application/json" } });
+      if (res.ok) return await res.json();
+    } catch (err) {
+      console.warn("Instance config load failed; using defaults.", err);
+    }
+    return null;
+  }
+
   function buildNav() {
     const nav = navEl();
     if (!nav) return;
     BAM.clear(nav);
-    BAM.getViews().forEach((view) => {
+    enabledViews().forEach((view) => {
       const item = BAM.h(
         "a",
         {
@@ -279,8 +375,9 @@
     });
   }
 
-  /** Boot: build the nav, wire hashchange, render the current view. */
-  BAM.start = function start() {
+  /** Boot: theme from the instance config, build the nav, then render. */
+  BAM.start = async function start() {
+    BAM.applyConfig(await loadConfig());
     buildNav();
     window.addEventListener("hashchange", renderCurrent);
     renderCurrent();

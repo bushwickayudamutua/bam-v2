@@ -380,6 +380,36 @@ export function makeWebApi(store: BamStore) {
       };
     },
 
+    // Instance config (white-label) — read from the CRDT doc, mapped to the
+    // console's snake_case shape (same as the server's GET /config), so the
+    // shared app.js themes from BAM.api.config() with no server.
+    async config() {
+      const d = doc();
+      const c = d.config ?? { name: d.meta.org };
+      const b = c.branding ?? {};
+      return {
+        org: {
+          name: c.name,
+          short_name: c.shortName ?? null,
+          tagline: c.tagline ?? null,
+          timezone: c.timezone ?? null,
+        },
+        branding: {
+          primary_color: b.primaryColor ?? null,
+          accent_color: b.accentColor ?? null,
+          theme_color: b.themeColor ?? null,
+          title: b.title ?? c.name,
+          logo: b.logo ?? "hands",
+        },
+        features: c.features ?? {},
+        catalog: {
+          goods: GOODS.map((t) => ({ key: t.key, label: t.label, category: t.category })),
+          social_services: SOCIAL_SERVICES.map((t) => ({ key: t.key, label: t.label, category: t.category })),
+          languages: [...LANGUAGES],
+        },
+      };
+    },
+
     // Browse / list views (parity with the Airtable Interfaces) ------------
     async appointments(date?: string) {
       const d = doc();
