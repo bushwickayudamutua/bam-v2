@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from datetime import date, datetime
 
 from sqlmodel import Session
@@ -51,6 +52,111 @@ def cmd_serve(args: argparse.Namespace) -> None:
 def cmd_init_db(args: argparse.Namespace) -> None:
     init_db()
     _print_json({"initialized": True, "database_url": settings.database_url})
+
+
+def _instance_template(name: str, short_name: str, primary: str, accent: str) -> str:
+    return f'''# Instance (white-label) configuration for the Mutual Aid System.
+# Launch a rebranded instance by pointing BAM_INSTANCE_CONFIG at this file:
+#   BAM_INSTANCE_CONFIG=instance.toml bam serve
+# Secrets (DB URL, SMS/Google keys) stay in environment variables, not here.
+
+[org]
+name = "{name}"
+short_name = "{short_name}"
+tagline = "Mutual aid distribution operations"
+timezone = "America/New_York"
+locale = "en"
+
+[branding]
+primary_color = "{primary}"   # buttons, nav, focus ring
+accent_color = "{accent}"     # secondary accent
+theme_color = "{primary}"     # mobile browser bar
+title = "{name}"
+# logo: "hands" (built-in mark), "initials" (org short_name in a chip),
+# "none", or a raw inline <svg>…</svg> string.
+logo = "initials"
+
+[features]
+# Console modules — turn any off to hide it from the nav.
+checkin = true
+appointments = true
+lookup = true
+intake = true
+outreach = true
+furniture = true
+services = true
+distros = true
+dashboard = true
+admin = true
+
+# Optional: override the outreach [REQUEST_URL] target.
+# request_form_url = "https://example.org/request"
+
+# Optional catalog override. Omit [catalog] to use the built-in defaults.
+# When supplied, languages/goods/social_services fully REPLACE the defaults.
+# [catalog]
+# languages = ["English", "Español / Spanish", "Kreyòl / Haitian Creole"]
+#
+# [[catalog.goods]]
+# key = "groceries"
+# label = "Groceries"
+# category = "food"
+#
+# [[catalog.social_services]]
+# key = "legal_aid"
+# label = "Legal Aid"
+# category = "social_service"
+'''
+
+
+def cmd_init_instance(args: argparse.Namespace) -> None:
+    """Scaffold a new instance config so anyone can launch their own instance."""
+    from pathlib import Path
+
+    out = Path(args.output)
+    if out.exists() and not args.force:
+        _print_json({"error": f"{out} already exists — pass --force to overwrite."})
+        raise SystemExit(1)
+    out.write_text(
+        _instance_template(args.name, args.short_name, args.primary_color, args.accent_color),
+        encoding="utf-8",
+    )
+    _print_json(
+        {
+            "created": str(out),
+            "next_steps": [
+                f"Edit {out} — branding, features, and (optionally) your catalog.",
+                f"Launch it:  BAM_INSTANCE_CONFIG={out} bam serve",
+                f"Validate:   BAM_INSTANCE_CONFIG={out} bam config",
+            ],
+        }
+    )
+
+
+def cmd_config(args: argparse.Namespace) -> None:
+    """Load, validate, and print the resolved instance config."""
+    from bam.instance import apply_to_runtime, load_instance_config
+
+    try:
+        cfg = load_instance_config(args.config)
+    except Exception as exc:  # noqa: BLE001 — surface a clean validation error
+        _print_json({"valid": False, "error": str(exc)})
+        raise SystemExit(1) from exc
+    apply_to_runtime(cfg)
+    from bam.request_types import GOODS, LANGUAGES, SOCIAL_SERVICES
+
+    _print_json(
+        {
+            "valid": True,
+            "source": args.config or os.environ.get("BAM_INSTANCE_CONFIG") or "<defaults>",
+            "config": cfg.model_dump(),
+            "resolved_catalog": {
+                "goods": len(GOODS),
+                "social_services": len(SOCIAL_SERVICES),
+                "languages": len(LANGUAGES),
+            },
+        }
+    )
 
 
 def cmd_process_intake(args: argparse.Namespace) -> None:
@@ -212,6 +318,25 @@ def build_parser() -> argparse.ArgumentParser:
 
     init_db_cmd = subparsers.add_parser("init-db", help="Create all database tables.")
     init_db_cmd.set_defaults(func=cmd_init_db)
+
+    init_instance = subparsers.add_parser(
+        "init-instance", help="Scaffold a white-label instance config to launch your own."
+    )
+    init_instance.add_argument("--name", default="My Mutual Aid", help="Org display name.")
+    init_instance.add_argument("--short-name", default="MMA", help="Short name / initials.")
+    init_instance.add_argument("--primary-color", default="#ff6e2e", help="Brand color (hex).")
+    init_instance.add_argument("--accent-color", default="#aecee6", help="Accent color (hex).")
+    init_instance.add_argument("--output", default="instance.toml", help="Output file path.")
+    init_instance.add_argument("--force", action="store_true", help="Overwrite if it exists.")
+    init_instance.set_defaults(func=cmd_init_instance)
+
+    config_cmd = subparsers.add_parser(
+        "config", help="Validate and print the resolved instance (white-label) config."
+    )
+    config_cmd.add_argument(
+        "--config", default=None, help="Instance config file (default: $BAM_INSTANCE_CONFIG)."
+    )
+    config_cmd.set_defaults(func=cmd_config)
 
     process_intake = subparsers.add_parser(
         "process-intake", help="Process all unprocessed form submissions (spec 6.1)."

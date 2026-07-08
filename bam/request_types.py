@@ -39,7 +39,7 @@ class RequestType:
     expiry_days: int = DEFAULT_EXPIRY_DAYS
 
 
-GOODS: list[RequestType] = [
+_DEFAULT_GOODS: list[RequestType] = [
     # Food
     RequestType("groceries", "Alimentos / Groceries / 食品", "food"),
     RequestType("hot_meals", "Comida caliente / Hot meals / 热食", "food"),
@@ -88,7 +88,7 @@ GOODS: list[RequestType] = [
     RequestType("other_kitchen", "Otras Cosas de Cocina / Other Kitchen Items / 其他廚房用品", "kitchen"),
 ]
 
-SOCIAL_SERVICES: list[RequestType] = [
+_DEFAULT_SOCIAL_SERVICES: list[RequestType] = [
     RequestType("tenant_legal", "Asistencia legal de inquilinos / Tenant legal assistance / 租戶法律協助", "social_service"),
     RequestType("in_school_services", "Asistencia con servicios escolares / Assistance with in-school services / 學校服務協助", "social_service"),
     RequestType("tutoring", "Tutoría estudiantil / Tutoring for students / 學生輔導", "social_service"),
@@ -109,7 +109,7 @@ SOCIAL_SERVICES: list[RequestType] = [
 
 #: Types the spec (section 9) names but the production base doesn't track.
 #: Kept so intake accepts them from forms; labels are spec-derived.
-SPEC_COMPAT: list[RequestType] = [
+_DEFAULT_SPEC_COMPAT: list[RequestType] = [
     RequestType("masks_covid_tests", "Mascarillas y pruebas de COVID / Masks & COVID Tests / 口罩和新冠检测", "household"),
     RequestType("pet_food", "Comida para mascotas / Pet Food / 宠物食品", "household"),
     RequestType("kitchen_supplies", "Artículos de cocina / Kitchen Supplies / 厨房用品", "kitchen"),
@@ -124,14 +124,22 @@ SPEC_COMPAT: list[RequestType] = [
     RequestType("diapers_size_6", "Pañales talla 6 / Baby Diapers Size 6 / 婴儿尿布6号", "toiletries"),
 ]
 
-ALL_TYPES: list[RequestType] = GOODS + SOCIAL_SERVICES + SPEC_COMPAT
-BY_KEY: dict[str, RequestType] = {t.key: t for t in ALL_TYPES}
+# Public catalog containers, populated by ``load_catalog`` (at import with the
+# BAM defaults above, and again from an instance config at app startup). They
+# are mutated IN PLACE so ``from bam.request_types import GOODS`` and the
+# lookup functions below pick up an instance's custom catalog.
+GOODS: list[RequestType] = []
+SOCIAL_SERVICES: list[RequestType] = []
+SPEC_COMPAT: list[RequestType] = []
+ALL_TYPES: list[RequestType] = []
+BY_KEY: dict[str, RequestType] = {}
 
 #: The production base's Households.Languages select options, verbatim
-#: (spec background section 6: 11 supported languages, plus Other). Single
-#: source of truth for intake and outreach language vocabularies — exposed
-#: via GET /catalog so the console views cannot drift.
-LANGUAGES: list[str] = [
+#: (spec background section 6: 11 supported languages, plus Other). The
+#: default; an instance config may replace it. Single source of truth for
+#: intake and outreach language vocabularies — exposed via GET /catalog and
+#: GET /config so the console views cannot drift.
+_DEFAULT_LANGUAGES: list[str] = [
     "Inglés / English / 英文",
     "Español / Spanish / 西班牙语",
     "Chino Mandarín / Mandarin / 普通话",
@@ -145,6 +153,8 @@ LANGUAGES: list[str] = [
     "Francés / French / 法語",
     "Otro / Other / 其他語言",
 ]
+
+LANGUAGES: list[str] = []  # populated by load_catalog
 
 #: Alternate names that aren't already a label segment: item-level names
 #: from the current forms plus common shorthand.
@@ -212,14 +222,48 @@ LEGACY_ALIASES: dict[str, str] = {
     "hot meals": "hot_meals",
 }
 
-_BY_LABEL_SEGMENT: dict[str, RequestType] = {}
-for _t in ALL_TYPES:
-    _BY_LABEL_SEGMENT.setdefault(_t.label.lower(), _t)
-    for _segment in _t.label.split(" / "):
-        _BY_LABEL_SEGMENT.setdefault(_segment.strip().lower(), _t)
-for _aliases in (ITEM_ALIASES, LEGACY_ALIASES):
-    for _alias, _key in _aliases.items():
-        _BY_LABEL_SEGMENT.setdefault(_alias, BY_KEY[_key])
+_BY_LABEL_SEGMENT: dict[str, RequestType] = {}  # populated by load_catalog
+
+
+def load_catalog(
+    goods: list[RequestType] | None = None,
+    social_services: list[RequestType] | None = None,
+    languages: list[str] | None = None,
+) -> None:
+    """(Re)build the catalog registries in place from the given lists, or the
+    BAM defaults when a list is ``None``. Called at import with the defaults;
+    an instance config re-invokes it at startup with a custom catalog. The
+    module-level containers are mutated in place so already-imported names and
+    the lookup functions below stay correct after a reconfigure.
+
+    ``SPEC_COMPAT`` extras are BAM-specific and only included when ``goods`` is
+    not overridden; the aliases likewise only apply to keys that exist.
+    """
+    # SPEC_COMPAT are BAM-only extras; keep them only when goods isn't overridden.
+    extras = list(_DEFAULT_SPEC_COMPAT) if goods is None else []
+    goods = list(_DEFAULT_GOODS if goods is None else goods)
+    social = list(_DEFAULT_SOCIAL_SERVICES if social_services is None else social_services)
+
+    GOODS[:] = goods
+    SOCIAL_SERVICES[:] = social
+    SPEC_COMPAT[:] = extras
+    ALL_TYPES[:] = [*goods, *social, *extras]
+    BY_KEY.clear()
+    BY_KEY.update({t.key: t for t in ALL_TYPES})
+    LANGUAGES[:] = list(_DEFAULT_LANGUAGES if languages is None else languages)
+
+    _BY_LABEL_SEGMENT.clear()
+    for _t in ALL_TYPES:
+        _BY_LABEL_SEGMENT.setdefault(_t.label.lower(), _t)
+        for _segment in _t.label.split(" / "):
+            _BY_LABEL_SEGMENT.setdefault(_segment.strip().lower(), _t)
+    for _aliases in (ITEM_ALIASES, LEGACY_ALIASES):
+        for _alias, _key in _aliases.items():
+            if _key in BY_KEY:
+                _BY_LABEL_SEGMENT.setdefault(_alias, BY_KEY[_key])
+
+
+load_catalog()  # populate with the BAM defaults at import
 
 
 def normalize_type(value: str) -> str | None:

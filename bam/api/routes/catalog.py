@@ -9,13 +9,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+import bam.instance as instance_mod
 from bam.request_types import GOODS, LANGUAGES, SOCIAL_SERVICES
 
 router = APIRouter()
 
 
-@router.get("/catalog")
-def get_catalog() -> dict:
+def _catalog_payload() -> dict:
     def entry(t) -> dict:
         return {"key": t.key, "label": t.label, "category": t.category}
 
@@ -23,4 +23,23 @@ def get_catalog() -> dict:
         "goods": [entry(t) for t in GOODS],
         "social_services": [entry(t) for t in SOCIAL_SERVICES],
         "languages": list(LANGUAGES),
+    }
+
+
+@router.get("/catalog")
+def get_catalog() -> dict:
+    return _catalog_payload()
+
+
+@router.get("/config")
+def get_config() -> dict:
+    """The white-label instance config the console themes itself from:
+    org identity, branding, enabled features, and the resolved catalog."""
+    cfg = instance_mod.instance
+    return {
+        "org": cfg.org.model_dump(),
+        "branding": cfg.branding.model_dump(),
+        "features": cfg.features.model_dump(),
+        "catalog": _catalog_payload(),
+        "request_form_url": cfg.request_form_url,
     }

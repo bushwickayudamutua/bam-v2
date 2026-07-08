@@ -37,7 +37,12 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     """Build the BAM API with all routers registered."""
-    app = FastAPI(title="BAM Mutual Aid System V2", lifespan=_lifespan)
+    # Apply the white-label instance config (catalog/languages/form URL) before
+    # anything reads the catalog, so a configured deployment is fully rebranded.
+    from bam.instance import apply_to_runtime, instance
+
+    apply_to_runtime(instance)
+    app = FastAPI(title=f"{instance.org.name} — Mutual Aid System", lifespan=_lifespan)
     init_db()
     app.include_router(intake.router)
     app.include_router(outreach.router)
