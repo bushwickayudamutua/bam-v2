@@ -31,6 +31,16 @@ class FulfillOut(BaseModel):
     social_service_requests: list[SocialServiceRequestOut] = []
 
 
+class TimeoutIn(BaseModel):
+    request_ids: list[int] = []
+    social_service_request_ids: list[int] = []
+
+
+class TimeoutOut(BaseModel):
+    requests: list[RequestOut] = []
+    social_service_requests: list[SocialServiceRequestOut] = []
+
+
 @router.get("/households/lookup", response_model=CheckinView)
 def lookup_household(phone: str, session: Session = Depends(get_session)) -> CheckinView:
     """Find a household by phone with its open requests (spec 6.3 steps 2-3)."""
@@ -47,6 +57,15 @@ def search_households(
     """Name search for check-in when a recipient arrives without their phone
     (spec journey step 5: "check in via phone number/name")."""
     return checkin.search_by_name(session, name)
+
+
+@router.get("/households/search-phone", response_model=list[HouseholdMatch])
+def search_households_by_phone(
+    digits: str, session: Session = Depends(get_session)
+) -> list[HouseholdMatch]:
+    """Find households by the last digits of their phone (volunteer-checkin
+    guide Step 2: "type the last 4 digits")."""
+    return checkin.search_by_phone_suffix(session, digits)
 
 
 @router.get("/households/{household_id}", response_model=CheckinView)
@@ -85,6 +104,29 @@ def fulfill_requests(
     except ValueError as exc:
         raise value_error_to_http(exc) from exc
     return FulfillOut(
+        requests=[RequestOut.model_validate(obj) for obj in updated if isinstance(obj, Request)],
+        social_service_requests=[
+            SocialServiceRequestOut.model_validate(obj)
+            for obj in updated
+            if not isinstance(obj, Request)
+        ],
+    )
+
+
+@router.post("/requests/timeout", response_model=TimeoutOut)
+def timeout_requests(
+    payload: TimeoutIn, session: Session = Depends(get_session)
+) -> TimeoutOut:
+    """Time out requests a recipient declines at check-in (guide Step 4)."""
+    try:
+        updated = checkin.timeout_requests(
+            session,
+            request_ids=payload.request_ids,
+            social_service_request_ids=payload.social_service_request_ids,
+        )
+    except ValueError as exc:
+        raise value_error_to_http(exc) from exc
+    return TimeoutOut(
         requests=[RequestOut.model_validate(obj) for obj in updated if isinstance(obj, Request)],
         social_service_requests=[
             SocialServiceRequestOut.model_validate(obj)

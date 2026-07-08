@@ -102,7 +102,7 @@
       h(
         "div",
         { class: "field" },
-        h("label", { class: "label", for: "checkin-phone" }, "Phone number"),
+        h("label", { class: "label", for: "checkin-phone" }, "Phone number (or last 4 digits)"),
         phoneInput
       ),
       h(
@@ -155,19 +155,16 @@
       selectedServices.clear();
       try {
         if (phone) {
-          state.view = await api.lookup(phone);
-          renderResult();
-        } else {
-          const matches = await api.searchByName(name);
-          if (!matches.length) {
-            state.view = null;
-            renderNotFound(name);
-          } else if (matches.length === 1) {
-            await loadHousehold(matches[0].id);
+          const digits = phone.replace(/\D/g, "");
+          if (digits && digits.length <= 4) {
+            // Last-4-digits search (volunteer-checkin guide Step 2).
+            await routeMatches(await api.searchByPhone(digits), phone);
           } else {
-            state.view = null;
-            renderMatches(matches);
+            state.view = await api.lookup(phone);
+            renderResult();
           }
+        } else {
+          await routeMatches(await api.searchByName(name), name);
         }
       } catch (err) {
         state.view = null;
@@ -179,6 +176,19 @@
         }
       } finally {
         setBusy(false);
+      }
+    }
+
+    // Route 0/1/N search hits (shared by name + last-4 search).
+    async function routeMatches(matches, label) {
+      if (!matches.length) {
+        state.view = null;
+        renderNotFound(label);
+      } else if (matches.length === 1) {
+        await loadHousehold(matches[0].id);
+      } else {
+        state.view = null;
+        renderMatches(matches);
       }
     }
 
@@ -270,6 +280,30 @@
         await refresh();
       } catch (err) {
         toast(err.detail || "Could not mark delivered.", "error");
+        setBusy(false);
+      }
+    }
+
+    // Recipient declines an in-stock item (guide Step 4): time it out.
+    async function doTimeout() {
+      if (!state.view) return;
+      const request_ids = [...selectedRequests];
+      const social_service_request_ids = [...selectedServices];
+      if (!request_ids.length && !social_service_request_ids.length) {
+        toast("Select at least one request to time out.", "info");
+        return;
+      }
+      setBusy(true);
+      try {
+        const out = await api.timeout({ request_ids, social_service_request_ids });
+        const n =
+          (out.requests || []).length + (out.social_service_requests || []).length;
+        toast(`Marked ${n} timed out.`, "success");
+        selectedRequests.clear();
+        selectedServices.clear();
+        await refresh();
+      } catch (err) {
+        toast(err.detail || "Could not time out.", "error");
         setBusy(false);
       }
     }
@@ -471,6 +505,16 @@
                   disabled: state.loading,
                 },
                 "Mark selected delivered"
+              ),
+              // Guide Step 4: recipient no longer needs a selected item.
+              h(
+                "button",
+                {
+                  class: "btn btn-ghost btn-block",
+                  onclick: doTimeout,
+                  disabled: state.loading,
+                },
+                "Mark selected timed out (no longer needed)"
               ),
             ]
       );

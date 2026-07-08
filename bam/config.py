@@ -35,6 +35,19 @@ class Settings:
     twilio_from_number: str = field(
         default_factory=lambda: os.environ.get("TWILIO_FROM_NUMBER", "")
     )
+    # Dialpad (BAM's production SMS provider; same env names as bam-automation).
+    dialpad_api_token: str = field(
+        default_factory=lambda: os.environ.get("BAM_DIALPAD_API_TOKEN", "")
+    )
+    dialpad_user_id: str = field(
+        default_factory=lambda: os.environ.get("BAM_DIALPAD_USER_ID", "")
+    )
+    # Per-recipient pause after a send (bam-automation sleeps 2s per recipient);
+    # configurable so tests run instantly. The 30-msg/30s batch pause and the
+    # 240 cap stay in the outreach service, not the provider.
+    dialpad_send_interval_seconds: int = field(
+        default_factory=lambda: _env_int("BAM_DIALPAD_SEND_INTERVAL_SECONDS", 2)
+    )
 
     # Text blast behaviour (spec 6.2: max 240 messages, 30 msgs then 30s delay)
     sms_max_messages: int = field(default_factory=lambda: _env_int("BAM_SMS_MAX_MESSAGES", 240))

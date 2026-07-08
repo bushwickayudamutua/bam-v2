@@ -190,6 +190,77 @@ def fulfill_requests(
     return resolved
 
 
+def timeout_requests(
+    session: Session,
+    request_ids: list[int] = (),
+    social_service_request_ids: list[int] = (),
+    now: datetime | None = None,
+) -> list[Request | SocialServiceRequest]:
+    """Time out requests a present recipient DECLINES at check-in.
+
+    From the volunteer-checkin-guide Step 4: for each open request the
+    volunteer asks "do you still need this?" — NO ⇒ mark it Timeout. This is
+    distinct from the end-of-distro no-show timeout (``process_no_shows``,
+    2nd missed appointment): same ``apply_status_change(TIMEOUT)`` primitive
+    (14-day processing window, even for pots & pans), but a different trigger,
+    and it must NOT feed the Fulfilled Request Count (a timed-out item is
+    closed-but-unfulfilled) or touch the household's appointment. Only OPEN
+    requests transition (a double-click or an already-Delivered id is left
+    untouched); unknown ids raise ``NotFoundError``. Returns goods first.
+    """
+    now = now or utcnow()
+    requests: list[Request] = []
+    missing: list[str] = []
+    for request_id in dict.fromkeys(request_ids):
+        request = session.get(Request, request_id)
+        if request is None:
+            missing.append(f"request {request_id}")
+        else:
+            requests.append(request)
+    social_requests: list[SocialServiceRequest] = []
+    for social_id in dict.fromkeys(social_service_request_ids):
+        social = session.get(SocialServiceRequest, social_id)
+        if social is None:
+            missing.append(f"social service request {social_id}")
+        else:
+            social_requests.append(social)
+    if missing:
+        raise NotFoundError(f"Unknown ids: {', '.join(missing)}")
+
+    resolved: list[Request | SocialServiceRequest] = [*requests, *social_requests]
+    for obj in resolved:
+        if obj.status != RequestStatus.OPEN:
+            continue
+        apply_status_change(obj, RequestStatus.TIMEOUT, now=now)
+        session.add(obj)
+    session.commit()
+    for obj in resolved:
+        session.refresh(obj)
+    return resolved
+
+
+def search_by_phone_suffix(
+    session: Session, digits: str, limit: int = 20
+) -> list[HouseholdMatch]:
+    """Find households by the last digits of their phone (guide Step 2: "type
+    the last 4 digits"). A triage aid that returns a candidate list for the
+    volunteer to pick — not a unique key. Phones are stored E.164, so we match
+    on the trailing digits; non-digit input is stripped first."""
+    suffix = "".join(ch for ch in digits if ch.isdigit())
+    if not suffix:
+        return []
+    households = session.exec(
+        select(Household)
+        .where(
+            col(Household.phone_number).is_not(None),
+            col(Household.phone_number).like(f"%{suffix}"),
+        )
+        .order_by(Household.name, Household.id)
+        .limit(limit)
+    ).all()
+    return [HouseholdMatch.model_validate(h, from_attributes=True) for h in households]
+
+
 def process_no_shows(
     session: Session,
     distro_date: date,

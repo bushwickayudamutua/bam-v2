@@ -96,6 +96,9 @@
     searchByName(name) {
       return request("GET", `/households/search${qs({ name })}`);
     },
+    searchByPhone(digits) {
+      return request("GET", `/households/search-phone${qs({ digits })}`);
+    },
     householdView(id) {
       return request("GET", `/households/${id}`);
     },
@@ -104,6 +107,12 @@
     },
     fulfill({ request_ids = [], social_service_request_ids = [] } = {}) {
       return request("POST", "/requests/fulfill", {
+        request_ids,
+        social_service_request_ids,
+      });
+    },
+    timeout({ request_ids = [], social_service_request_ids = [] } = {}) {
+      return request("POST", "/requests/timeout", {
         request_ids,
         social_service_request_ids,
       });
@@ -118,8 +127,10 @@
     outreachList(filters) {
       return request("POST", "/outreach/list", filters || {});
     },
-    blast({ household_ids = [], template, max_messages } = {}) {
-      const body = { household_ids, template };
+    blast({ household_ids = [], template, templates, max_messages } = {}) {
+      const body = { household_ids };
+      if (template !== undefined && template !== null) body.template = template;
+      if (templates) body.templates = templates;
       if (max_messages !== undefined && max_messages !== null) {
         body.max_messages = max_messages;
       }
