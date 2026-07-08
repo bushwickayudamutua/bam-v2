@@ -186,6 +186,11 @@
       return this._catalogPromise;
     },
 
+    // Instance config (white-label: org/branding/features/catalog) ---------
+    config() {
+      return request("GET", "/config");
+    },
+
     // Browse / list views (parity with the Airtable Interfaces) ------------
     appointments(date) {
       return request("GET", `/appointments${qs({ date })}`);

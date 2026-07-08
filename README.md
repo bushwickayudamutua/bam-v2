@@ -105,6 +105,40 @@ Blast templates support the spec's placeholders `[FIRST_NAME]` and
 `BAM_SMS_BATCH_PAUSE_SECONDS` after every `BAM_SMS_BATCH_SIZE` messages
 (spec 6.2: 30 messages, then a 30-second delay).
 
+## White-label: launch your own instance
+
+Any mutual-aid group can run their own fully-rebranded, reconfigured instance
+with **no code changes**. Identity lives in a non-secret config file (org name,
+branding, which modules are on, and the request-type/language catalog); secrets
+(DB URL, provider keys) stay in environment variables.
+
+```bash
+# scaffold a config for your org
+bam init-instance --name "Anytown Mutual Aid" --short-name AMA \
+    --primary-color "#2b7a4b" --accent-color "#f2c14e" --output instance.toml
+
+# edit instance.toml (branding / features / catalog), then validate + launch
+BAM_INSTANCE_CONFIG=instance.toml bam config     # prints the resolved config
+BAM_INSTANCE_CONFIG=instance.toml bam serve       # your rebranded instance
+```
+
+See [`instance.example.toml`](instance.example.toml) for every option. Highlights:
+
+- **`[org]`** — name, short name, tagline, timezone, locale.
+- **`[branding]`** — `primary_color` / `accent_color` (applied as CSS variables
+  at console boot), `theme_color`, `title`, and `logo` (`"hands"` built-in mark,
+  `"initials"`, `"none"`, or a raw inline `<svg>`).
+- **`[features]`** — turn any console module (check-in, appointments, look-up,
+  intake, outreach, furniture, services, distros, dashboard, admin) on/off; a
+  disabled module is hidden from the nav.
+- **`[catalog]`** *(optional)* — replace the request-type `goods` /
+  `social_services` and `languages` with your own; omit to keep the defaults.
+
+At startup the app applies the config (swapping the catalog + languages), and
+the console themes itself from `GET /config` — colors, title, logo, feature-gated
+nav, and vocabulary. Unset `BAM_INSTANCE_CONFIG` reproduces the Bushwick Ayuda
+Mutua identity, so existing deployments are unchanged.
+
 ## Configuration
 
 All settings come from environment variables (`bam/config.py`):

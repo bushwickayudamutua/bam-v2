@@ -1,0 +1,51 @@
+# Instance (white-label) configuration for the Mutual Aid System.
+# Launch a rebranded instance by pointing BAM_INSTANCE_CONFIG at this file:
+#   BAM_INSTANCE_CONFIG=instance.toml bam serve
+# Secrets (DB URL, SMS/Google keys) stay in environment variables, not here.
+
+[org]
+name = "Example Mutual Aid"
+short_name = "EMA"
+tagline = "Mutual aid distribution operations"
+timezone = "America/New_York"
+locale = "en"
+
+[branding]
+primary_color = "#ff6e2e"   # buttons, nav, focus ring
+accent_color = "#aecee6"     # secondary accent
+theme_color = "#ff6e2e"     # mobile browser bar
+title = "Example Mutual Aid"
+# logo: "hands" (built-in mark), "initials" (org short_name in a chip),
+# "none", or a raw inline <svg>…</svg> string.
+logo = "initials"
+
+[features]
+# Console modules — turn any off to hide it from the nav.
+checkin = true
+appointments = true
+lookup = true
+intake = true
+outreach = true
+furniture = true
+services = true
+distros = true
+dashboard = true
+admin = true
+
+# Optional: override the outreach [REQUEST_URL] target.
+# request_form_url = "https://example.org/request"
+
+# Optional catalog override. Omit [catalog] to use the built-in defaults.
+# When supplied, languages/goods/social_services fully REPLACE the defaults.
+# [catalog]
+# languages = ["English", "Español / Spanish", "Kreyòl / Haitian Creole"]
+#
+# [[catalog.goods]]
+# key = "groceries"
+# label = "Groceries"
+# category = "food"
+#
+# [[catalog.social_services]]
+# key = "legal_aid"
+# label = "Legal Aid"
+# category = "social_service"
