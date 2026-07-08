@@ -15,8 +15,10 @@ import {
   buildInviteUrl,
   createInvite,
   isAdmin,
+  reinstateMember,
   revokeInvite,
   revokeMember,
+  setRole,
   type InvitePayload,
 } from "./roster.ts";
 import type { Role } from "./schema.ts";
@@ -81,6 +83,59 @@ export function registerRosterView(store: BamStore): void {
       h("div", { class: "mono", style: { wordBreak: "break-all", fontSize: "13px" } }, store.roster.url)
     );
 
+    // Admin action buttons per member (promote/demote/revoke/reinstate).
+    function actionBtn(label: string, cls: string, fn: () => void): HTMLElement {
+      return h(
+        "button",
+        {
+          class: `btn ${cls}`,
+          onclick: () => {
+            try {
+              fn();
+              render(container);
+            } catch (err) {
+              toast(err instanceof Error ? err.message : String(err), "error");
+            }
+          },
+        },
+        label
+      );
+    }
+    function memberActions(m: { peerId: string; name: string; role: string; revokedAt?: string }) {
+      if (m.peerId === store.peerId) return []; // no actions on yourself (lockout-safe)
+      if (m.revokedAt) {
+        return [
+          actionBtn("Reinstate", "btn-ghost", () => {
+            reinstateMember(store.roster, store.peerId, m.peerId);
+            toast(`Reinstated ${m.name}.`, "success");
+          }),
+        ];
+      }
+      const actions: HTMLElement[] = [];
+      if (m.role === "volunteer") {
+        actions.push(
+          actionBtn("Make admin", "btn-ghost", () => {
+            setRole(store.roster, store.peerId, m.peerId, "admin");
+            toast(`${m.name} is now an admin.`, "success");
+          })
+        );
+      } else {
+        actions.push(
+          actionBtn("Make volunteer", "btn-ghost", () => {
+            setRole(store.roster, store.peerId, m.peerId, "volunteer");
+            toast(`${m.name} is now a volunteer.`, "success");
+          })
+        );
+      }
+      actions.push(
+        actionBtn("Revoke", "btn-danger", () => {
+          revokeMember(store.roster, store.peerId, m.peerId);
+          toast(`Revoked ${m.name}.`, "success");
+        })
+      );
+      return actions;
+    }
+
     // Members list.
     const members = Object.values(roster.members).sort((a, b) =>
       a.addedAt < b.addedAt ? -1 : 1
@@ -104,24 +159,8 @@ export function registerRosterView(store: BamStore): void {
           { class: `badge ${m.revokedAt ? "badge-timeout" : "badge-open"}` },
           m.revokedAt ? "revoked" : m.role
         ),
-        admin && !m.revokedAt && m.peerId !== store.peerId
-          ? h(
-              "button",
-              {
-                class: "btn btn-danger",
-                onclick: () => {
-                  try {
-                    revokeMember(store.roster, store.peerId, m.peerId);
-                    toast(`Revoked ${m.name}.`, "success");
-                    render(container);
-                  } catch (err) {
-                    toast(err instanceof Error ? err.message : String(err), "error");
-                  }
-                },
-              },
-              "Revoke"
-            )
-          : null
+        m.peerId === store.peerId ? h("span", { class: "pill" }, "you") : null,
+        admin ? h("div", { class: "row" }, memberActions(m)) : null
       )
     );
     const membersCard = h(

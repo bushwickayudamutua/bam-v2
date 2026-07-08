@@ -239,6 +239,65 @@ export function revokeMember(
   });
 }
 
+/**
+ * Admin action: change a member's role (promote a volunteer to admin, or
+ * demote an admin to volunteer). Promotion clears any ``inviteId`` because an
+ * explicit admin vouch supersedes the invite proof (whose role is
+ * volunteer-only, so ``inviteEnrollmentValid`` would otherwise reject the new
+ * admin role). Refuses to demote the last active admin (lockout guard).
+ */
+export function setRole(
+  handle: DocHandle<RosterDoc>,
+  actor: string,
+  peerId: string,
+  role: Role,
+  now: string = nowIso()
+): void {
+  const doc = handle.doc();
+  if (!isAdmin(doc, actor)) {
+    throw new NotAuthorized(`peer ${actor} is not an active admin`);
+  }
+  const member = doc?.members[peerId];
+  if (!member) throw new Error(`no roster member ${peerId}`);
+  if (role === "volunteer" && member.role === "admin" && !member.revokedAt) {
+    const activeAdmins = Object.values(doc!.members).filter(
+      (m) => !m.revokedAt && m.role === "admin"
+    );
+    if (activeAdmins.length <= 1) {
+      throw new NotAuthorized("cannot demote the last admin (avoid lockout)");
+    }
+  }
+  handle.change((d) => {
+    const m = d.members[peerId];
+    if (!m) return;
+    m.role = role;
+    if (role === "admin") {
+      delete m.inviteId;
+      delete m.inviteProof;
+    }
+  });
+}
+
+/** Admin action: un-revoke a member. Clears the invite linkage too, since the
+ * admin is now vouching for the device directly (independent of invite state). */
+export function reinstateMember(
+  handle: DocHandle<RosterDoc>,
+  actor: string,
+  peerId: string
+): void {
+  if (!isAdmin(handle.doc(), actor)) {
+    throw new NotAuthorized(`peer ${actor} is not an active admin`);
+  }
+  handle.change((d) => {
+    const member = d.members[peerId];
+    if (!member) throw new Error(`no roster member ${peerId}`);
+    delete member.revokedAt;
+    delete member.revokedBy;
+    delete member.inviteId;
+    delete member.inviteProof;
+  });
+}
+
 /* QR invites — bearer-credential onboarding ------------------------------ */
 
 function randomSecret(): string {

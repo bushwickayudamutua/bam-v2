@@ -36,7 +36,7 @@ function makeService(
   };
   const merged = Object.fromEntries(
     Object.entries({ ...row, ...overrides }).filter(([, v]) => v !== undefined)
-  ) as SocialServiceRequestRow;
+  ) as unknown as SocialServiceRequestRow;
   handle.change((d) => {
     d.socialServiceRequests[id] = merged;
   });
