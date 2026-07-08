@@ -115,6 +115,10 @@ export function buildOutreachList(
 export interface BlastOptions {
   householdIds: string[];
   template: string; // supports [FIRST_NAME] and [REQUEST_URL]
+  /** Optional per-language map (keys Spanish/Cantonese/English). When present,
+   * each household is routed to its language with a Spanish+Cantonese+English
+   * "All" fallback; otherwise `template` goes to everyone. */
+  templates?: { [lang: string]: string };
   maxMessages?: number;
   dryRun?: boolean;
   requestFormUrl?: string;
@@ -148,6 +152,38 @@ export function renderTemplate(
   requestUrl: string
 ): string {
   return template.replaceAll("[FIRST_NAME]", firstName).replaceAll("[REQUEST_URL]", requestUrl);
+}
+
+/** Order the "All" message concatenates the per-language texts in (verbatim
+ * from bam-automation send_mass_text.py). */
+export const ALL_LANGUAGE_ORDER = ["Spanish", "Cantonese", "English"];
+
+/** Which language to text a household in (bam-automation determine_message_
+ * language; exact if/elif order). Households store full trilingual labels, so
+ * we substring-match the English middle token. */
+export function resolveSendLanguage(languages: string[]): string {
+  const joined = (languages ?? []).join(",");
+  if (joined.includes("Spanish")) return "Spanish";
+  if (joined.includes("Quechua")) return "Spanish";
+  if (joined.includes("Mandarin")) return "Cantonese";
+  if (joined.includes("Cantonese")) return "Cantonese";
+  if (joined.includes("English")) return "English";
+  return "All";
+}
+
+/** Concatenate the supplied per-language texts in ALL_LANGUAGE_ORDER, blank-
+ * line separated; absent languages omitted. */
+export function assembleAllMessage(templates: { [lang: string]: string }): string {
+  return ALL_LANGUAGE_ORDER.filter((l) => l in templates)
+    .map((l) => templates[l])
+    .join("\n\n");
+}
+
+/** Pick a household's body: resolve its send-language, use that template, else
+ * synthesize the "All" concatenation from whatever texts exist. */
+export function selectTemplate(templates: { [lang: string]: string }, languages: string[]): string {
+  const body = templates[resolveSendLanguage(languages)];
+  return body !== undefined ? body : assembleAllMessage(templates);
 }
 
 /**
@@ -200,7 +236,10 @@ export function queueBlast(
     const joiner = baseUrl.includes("?") ? "&" : "?";
     const url = `${baseUrl}${joiner}r=${makeToken()}`;
     const firstName = (h.name ?? "").split(/\s+/)[0] ?? "";
-    const body = renderTemplate(opts.template, firstName, url);
+    const rawBody = opts.templates
+      ? selectTemplate(opts.templates, h.languages ?? [])
+      : opts.template;
+    const body = renderTemplate(rawBody, firstName, url);
     report.sent += 1;
     report.messages.push({ householdId, to: h.phoneNumber, body });
     queued.push({

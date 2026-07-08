@@ -212,6 +212,20 @@
     });
     templateInput.value = DEFAULT_TEMPLATE;
 
+    // Optional per-language messages. When any is filled, they override the
+    // single template above and each household is routed to its language
+    // (Quechua→Spanish, Mandarin→Cantonese, English only if sole; otherwise
+    // Spanish+Cantonese+English concatenated). Server-side resolve_send_language.
+    const langTemplateInputs = {};
+    for (const lang of ["Spanish", "Cantonese", "English"]) {
+      langTemplateInputs[lang] = h("textarea", {
+        class: "input",
+        rows: "2",
+        "aria-label": `${lang} message`,
+        placeholder: `${lang} message (optional)`,
+      });
+    }
+
     const maxMessagesInput = h("input", {
       class: "input",
       id: "out-max-msgs",
@@ -249,6 +263,24 @@
           "div",
           { class: "list-item__meta" },
           "Placeholders: [FIRST_NAME] and [REQUEST_URL] are filled per household by the server."
+        )
+      ),
+      h(
+        "div",
+        { class: "field" },
+        h("label", { class: "label" }, "Per-language messages (optional — override the template above)"),
+        h(
+          "div",
+          { class: "list-item__meta" },
+          "Routing: Quechua→Spanish, Mandarin→Cantonese, English only if it's the sole language, otherwise all three concatenated."
+        ),
+        ...["Spanish", "Cantonese", "English"].map((lang) =>
+          h(
+            "div",
+            { class: "field" },
+            h("label", { class: "label" }, lang),
+            langTemplateInputs[lang]
+          )
         )
       ),
       h(
@@ -755,13 +787,21 @@
         toast("Select at least one candidate to text.", "info");
         return;
       }
+      const templates = {};
+      for (const [lang, input] of Object.entries(langTemplateInputs)) {
+        const value = input.value.trim();
+        if (value) templates[lang] = value;
+      }
+      const useTemplates = Object.keys(templates).length > 0;
       const template = templateInput.value.trim();
-      if (!template) {
-        toast("Enter a message template.", "info");
+      if (!useTemplates && !template) {
+        toast("Enter a message template (single or per-language).", "info");
         templateInput.focus();
         return;
       }
-      const payload = { household_ids, template };
+      const payload = { household_ids };
+      if (useTemplates) payload.templates = templates;
+      else payload.template = template;
       const max = parseInt(maxMessagesInput.value, 10);
       if (Number.isFinite(max) && max > 0) payload.max_messages = max;
 
